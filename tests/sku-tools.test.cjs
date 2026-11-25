@@ -11,7 +11,7 @@ const LEGACY_TARGET = "g1.2tb.ai.annual";
 const SCAN_KEY = "g1.sku.scan.v1";
 const TEST_KEY = "g1.pro.annual.test.v1";
 const REPORT = "https://one.google.com/g1-sku-report";
-// Fixture source IDs test the matching contract; they are not store catalog evidence.
+// ID sumber fixture menguji kontrak pencocokan; ini bukan bukti katalog toko.
 const SOURCE = "g1.ios.2tb.fixture_monthly";
 const OTHER_SOURCE = "g1.ios.2tb.fixture_annual";
 const TWENTY = "g1.ios.20tb.m.v2";
@@ -59,7 +59,7 @@ function run(name, options = {}) {
     };
   }
   vm.runInNewContext(source[name], context, { timeout: 2000, filename: name });
-  assert.equal(calls.length, 1, "$done must be called once");
+  assert.equal(calls.length, 1, "$done harus dipanggil tepat satu kali");
   return { payload: calls[0], storage, logs, reads, writes };
 }
 
@@ -67,7 +67,7 @@ function get(storage, key) {
   return JSON.parse(storage.get(key));
 }
 
-test("combined module maps 2TB, 20TB and 30TB while preserving unrelated full tokens", () => {
+test("modul gabungan memetakan 2TB, 20TB, dan 30TB sambil mempertahankan token utuh yang tidak terkait", () => {
   const untouched = [
     "g1.ios.12tb.fixture", TWENTY + ".extra", THIRTY + ".extra",
     "g1.ios.2tbx.fixture", "prefix" + SOURCE, "x." + SOURCE,
@@ -89,7 +89,7 @@ test("combined module maps 2TB, 20TB and 30TB while preserving unrelated full to
   ]);
 });
 
-test("empty responses or responses with no configured sources pass through", () => {
+test("respons kosong atau respons tanpa sumber terkonfigurasi dilewatkan apa adanya", () => {
   for (const body of ["", "g1.ios.100gb.m", "g1.ios.20tb.other", "g1.ios.30tb.other"]) {
     const result = run("g1-acq.js", { body });
     assert.deepEqual(result.payload, {});
@@ -102,7 +102,7 @@ test("empty responses or responses with no configured sources pass through", () 
   }
 });
 
-test("20TB and 30TB select trial or 90p independently across all sixteen offer combinations", () => {
+test("20TB dan 30TB memilih uji coba atau 90p secara independen di seluruh 16 kombinasi penawaran", () => {
   const cases = (target, backup) => [
     { offers: [], to: target, fallback: false },
     { offers: [target], to: target, fallback: false },
@@ -127,14 +127,14 @@ test("20TB and 30TB select trial or 90p independently across all sixteen offer c
   }
 });
 
-test("75p offers stay unchanged and no longer select a fallback", () => {
+test("penawaran 75p tetap tidak berubah dan tidak lagi dipilih sebagai cadangan", () => {
   const observed = [LEGACY_TWENTY_FALLBACK, LEGACY_THIRTY_FALLBACK];
   const result = run("g1-acq.js", { body: JSON.stringify([SOURCE, TWENTY, THIRTY, ...observed]) });
   assert.deepEqual(JSON.parse(result.payload.body), [TARGET, TWENTY_TARGET, THIRTY_TARGET, ...observed]);
   assert(get(result.storage, TEST_KEY).matchedFrom.every(row => row.fallback === false));
 });
 
-test("fallback uses this response rather than saved offers and preserves price and date fields", () => {
+test("cadangan menggunakan respons saat ini bukan penawaran tersimpan serta mempertahankan field harga dan tanggal", () => {
   const storage = new Map();
   run("g1-acq.js", { url: "https://one.google.com/plans", body: JSON.stringify([TWENTY_FALLBACK, THIRTY_FALLBACK]), storage });
   for (const day of ["23", "24"]) {
@@ -155,7 +155,7 @@ test("fallback uses this response rather than saved offers and preserves price a
   assert(!result.logs.some(line => line.includes("fallback=75p")));
 });
 
-test("fallback decisions are independent and the 2TB target stays fixed", () => {
+test("keputusan cadangan bersifat independen dan target 2TB tetap konstan", () => {
   const body = JSON.stringify([SOURCE, TWENTY, THIRTY, TWENTY_TARGET, TWENTY_FALLBACK, THIRTY_FALLBACK]);
   const result = run("g1-acq.js", { body });
   assert.deepEqual(JSON.parse(result.payload.body).slice(0, 3), [TARGET, TWENTY_TARGET, THIRTY_FALLBACK]);
@@ -165,7 +165,7 @@ test("fallback decisions are independent and the 2TB target stays fixed", () => 
   assert.deepEqual(rows.find(row => row.id === THIRTY), { id: THIRTY, to: THIRTY_FALLBACK, count: 1, fallback: true });
 });
 
-test("single module collects other Google pages without changing the last mapping record", () => {
+test("modul tunggal mengumpulkan halaman Google lainnya tanpa mengubah catatan pemetaan terakhir", () => {
   for (const url of [
     "https://one.google.com/ai", "https://one.google.com/ai/other?x=1",
     "https://one.google.com/plans?x=1"
@@ -187,7 +187,7 @@ test("single module collects other Google pages without changing the last mappin
   }
 });
 
-test("single module saves original candidates before rewriting without recording generated targets", () => {
+test("modul tunggal menyimpan kandidat asli sebelum menulis ulang tanpa mencatat target yang dihasilkan", () => {
   const body = JSON.stringify([SOURCE, SOURCE, TWENTY, THIRTY, "com.google.one.fixture"]);
   const result = run("g1-acq.js", { body });
   assert.deepEqual(JSON.parse(result.payload.body), [TARGET, TARGET, TWENTY_TARGET, THIRTY_TARGET, "com.google.one.fixture"]);
@@ -198,7 +198,7 @@ test("single module saves original candidates before rewriting without recording
   assert.deepEqual(result.writes, [SCAN_KEY, TEST_KEY]);
 });
 
-test("single-module collection decodes discovery copies and continues mapping when the list is full", () => {
+test("pengumpulan modul tunggal mendekode salinan penemuan dan melanjutkan pemetaan saat daftar penuh", () => {
   const escaped = String.raw`g1\u002eios\u002e2tb\u002eescaped`;
   const decoded = run("g1-acq.js", { body: escaped });
   assert.deepEqual(decoded.payload, {});
@@ -224,7 +224,7 @@ test("single-module collection decodes discovery copies and continues mapping wh
   assert.equal(scan.recentResponses.at(-1).omittedCount, 1);
 });
 
-test("activity distinguishes new IDs, repeated IDs, empty text and nontext responses", () => {
+test("aktivitas membedakan ID baru, ID berulang, teks kosong, dan respons non-teks", () => {
   const storage = new Map();
   const url = "https://one.google.com/plans?token=private-token";
   const body = [SOURCE, SOURCE, OTHER_SOURCE].join(" ");
@@ -252,18 +252,18 @@ test("activity distinguishes new IDs, repeated IDs, empty text and nontext respo
   assert.equal(scan.skus.length, 2);
   assert.equal(scan.recentResponses.at(-1).bodyType, "non-text");
   assert.equal(scan.recentResponses.at(-1).candidateCount, 0);
-  assert.equal(storage.has(TEST_KEY), false, "non-rewrite pages preserve the mapping record");
+  assert.equal(storage.has(TEST_KEY), false, "halaman non-penulisan ulang mempertahankan catatan pemetaan");
   assert(!storage.get(SCAN_KEY).includes("private-token"));
   const data = JSON.parse(run("g1-sku-report.js", { url: REPORT + "?format=json", storage }).payload.response.body);
   assert.deepEqual(data.scan.recentResponses, scan.recentResponses);
   assert.equal(data.scan.nonTextResponses, 1);
   const html = run("g1-sku-report.js", { url: REPORT, storage }).payload.response.body;
-  assert(html.includes("实际采集脚本：<code>g1-acq-v7.6</code>"));
-  assert(html.includes("编号与已有记录重复"));
-  assert(html.includes("正文不是可扫描文本"));
+  assert(html.includes("Skrip pengumpul aktual: <code>g1-acq-v7.6</code>"));
+  assert(html.includes("ID duplikat dengan catatan yang ada"));
+  assert(html.includes("isi bukan teks yang dapat dipindai"));
 });
 
-test("recent activity keeps ten arrivals and redacts URLs, extra fields and malformed events", () => {
+test("aktivitas terkini menyimpan sepuluh kejadian dan meredaksi URL, field ekstra, serta kejadian rusak", () => {
   const valid = {
     at: "2099-01-01T00:00:00.000Z", path: "/ai", bodyType: "text", status: "no-skus",
     candidateCount: 0, addedCount: 0, omittedCount: 0, body: "private-history-body"
@@ -275,9 +275,9 @@ test("recent activity keeps ten arrivals and redacts URLs, extra fields and malf
   let scan = get(storage, SCAN_KEY);
   assert.equal(scan.recentResponses.length, 2);
   assert.equal(scan.recentResponses[0].at, valid.at);
-  assert.equal(scan.recentResponses.at(-1).path, "/plans", "last received event stays last even after a clock change");
+  assert.equal(scan.recentResponses.at(-1).path, "/plans", "kejadian yang terakhir diterima tetap berada di akhir meskipun jam berubah");
   const paths = ["/", "/ai/", "/plans/", "/_/GoogleOne/account-secret/data/batchexecute", "/account/private@example.test"];
-  const expected = ["/", "/ai", "/plans", "/_/…/data/batchexecute", "[其他 one.google.com 路径]"];
+  const expected = ["/", "/ai", "/plans", "/_/…/data/batchexecute", "[Path one.google.com lainnya]"];
   for (let index = 0; index < 14; index++) {
     run("g1-acq.js", { url: "https://one.google.com" + paths[index % 5] + "?secret=query#private-fragment", body: SOURCE, storage });
   }
@@ -290,7 +290,7 @@ test("recent activity keeps ten arrivals and redacts URLs, extra fields and malf
   }
 });
 
-test("old scan records remain old until an actual response creates a new diagnostic event", () => {
+test("catatan pemindaian lama tetap lama hingga respons aktual membuat kejadian diagnostik baru", () => {
   const old = {
     schemaVersion: 1, version: "g1-acq-v7.1", updatedAt: "2026-11-23T07:40:18.464Z",
     scannedResponses: 5, matchedResponses: 1,
@@ -304,7 +304,7 @@ test("old scan records remain old until an actual response creates a new diagnos
   assert.equal(data.scan.scannedResponses, 5);
   assert.equal(storage.get(SCAN_KEY), before);
   const html = run("g1-sku-report.js", { url: REPORT, storage }).payload.response.body;
-  assert(html.includes("旧采集记录；尚未保存本版采集响应记录"));
+  assert(html.includes("Catatan pengumpulan lama; belum menyimpan catatan respons pengumpulan versi ini"));
   run("g1-acq.js", { url: "https://one.google.com/plans", body: SOURCE, storage });
   data = JSON.parse(run("g1-sku-report.js", { url: REPORT + "?format=json", storage }).payload.response.body);
   assert.equal(data.scan.version, "g1-acq-v7.6");
@@ -317,7 +317,7 @@ test("old scan records remain old until an actual response creates a new diagnos
   assert.equal(data.scan.recentResponses[0].addedCount, 0);
 });
 
-test("activity export rejects malformed metadata and excludes untrusted extra fields", () => {
+test("ekspor aktivitas menolak metadata rusak dan mengecualikan field ekstra yang tidak tepercaya", () => {
   const event = {
     at: "2026-11-23T07:40:06.325Z", path: "/plans", bodyType: "text", status: "known-skus",
     candidateCount: 2, addedCount: 0, omittedCount: 0, body: "private-body", query: "private-token"
@@ -334,14 +334,14 @@ test("activity export rejects malformed metadata and excludes untrusted extra fi
   assert(!result.payload.response.body.includes("private"));
 });
 
-test("storage errors do not prevent a matched response from completing", () => {
+test("kesalahan penyimpanan tidak menghalangi respons yang cocok untuk diselesaikan", () => {
   for (const flags of [{ storageAvailable: false }, { storageThrows: true }, { storageWriteFails: true }]) {
     const result = run("g1-acq.js", { body: SOURCE, ...flags });
     assert.equal(result.payload.body, TARGET);
   }
 });
 
-test("test records omit cookies, headers and full response data", () => {
+test("catatan pengujian menghilangkan cookie, header, dan data respons lengkap", () => {
   const result = run("g1-acq.js", { body: JSON.stringify({ sku: SOURCE, email: "private@example.test" }) });
   const saved = result.storage.get(TEST_KEY);
   assert(!saved.includes("private@example.test"));
@@ -351,7 +351,7 @@ test("test records omit cookies, headers and full response data", () => {
   assert(!result.storage.get(SCAN_KEY).includes("secret"));
 });
 
-test("collector discovers IDs and escaped dots while preserving the response", () => {
+test("pengumpul menemukan ID dan titik yang di-escape sambil mempertahankan respons", () => {
   const body = JSON.stringify([
     SOURCE, SOURCE, TARGET, "com.google.one.2tb.fixture.iog", "private@example.test"
   ]) + String.raw` "g1\u002eios\u002e2tb\u002eescaped" "g1&#46;2tb&#46;html"`;
@@ -368,7 +368,7 @@ test("collector discovers IDs and escaped dots while preserving the response", (
   assert(!JSON.stringify(state).includes("secret"));
 });
 
-test("collector accumulates prior records and recovers corrupt storage", () => {
+test("pengumpul mengakumulasi catatan sebelumnya dan memulihkan penyimpanan yang rusak", () => {
   const storage = new Map([[SCAN_KEY, "corrupt JSON"]]);
   run("g1-sku-scan.js", { body: SOURCE, storage });
   run("g1-sku-scan.js", { url: "https://one.google.com/plans", body: SOURCE + " " + TARGET, storage });
@@ -378,7 +378,7 @@ test("collector accumulates prior records and recovers corrupt storage", () => {
   assert.equal(state.skus.find(row => row.id === SOURCE).count, 2);
 });
 
-test("collector bounds stored candidates at 300 and still counts existing IDs", () => {
+test("pengumpul membatasi kandidat tersimpan pada 300 dan tetap menghitung ID yang sudah ada", () => {
   const body = Array.from({ length: 305 }, (_, index) => "g1.fixture." + index).join(" ");
   const result = run("g1-sku-scan.js", { body });
   assert.equal(get(result.storage, SCAN_KEY).skus.length, 300);
@@ -387,7 +387,7 @@ test("collector bounds stored candidates at 300 and still counts existing IDs", 
   assert.equal(get(result.storage, SCAN_KEY).skus.find(row => row.id === "g1.fixture.0").count, 2);
 });
 
-test("collector skips the local report, other domains and nontext bodies", () => {
+test("pengumpul melewati laporan lokal, domain lain, dan isi non-teks", () => {
   for (const options of [
     { url: REPORT, body: SOURCE },
     { url: REPORT + "?format=json", body: SOURCE },
@@ -402,33 +402,33 @@ test("collector skips the local report, other domains and nontext bodies", () =>
   }
 });
 
-test("collector passes through on storage failure", () => {
+test("pengumpul melewatkan respons saat penyimpanan gagal", () => {
   const result = run("g1-sku-scan.js", { body: SOURCE, storageThrows: true });
   assert.deepEqual(result.payload, {});
   assert(result.logs.some(line => line.includes("saved=no")));
 });
 
-test("report displays captured IDs and test sources without external assets", () => {
+test("laporan menampilkan ID tertangkap dan sumber pengujian tanpa aset eksternal", () => {
   const storage = new Map();
   run("g1-sku-scan.js", { body: SOURCE, storage });
   run("g1-acq.js", { body: SOURCE, storage });
   const { payload } = run("g1-sku-report.js", { url: REPORT, storage });
   assert.equal(payload.response.status, 200);
-  assert.match(payload.response.body, /Google One SKU 本地报告/);
+  assert.match(payload.response.body, /Laporan Lokal SKU Google One/);
   assert(payload.response.body.includes(SOURCE));
   assert(payload.response.body.includes(TARGET));
-  assert(payload.response.body.includes("本机脚本已接管 · v7.6.0"));
-  assert.match(payload.response.body, /<button\b[^>]*name=format[^>]*value=json[^>]*>导出 JSON<\/button>/);
+  assert(payload.response.body.includes("Skrip lokal telah mengambil alih · v7.6.0"));
+  assert.match(payload.response.body, /<button\b[^>]*name=format[^>]*value=json[^>]*>Ekspor JSON<\/button>/);
   assert(!/<(?:script|img|iframe)\b/i.test(payload.response.body));
   assert.equal(payload.response.headers["Cache-Control"], "no-store");
 });
 
-test("report export form resolves to a JSON attachment and supports a trailing slash", () => {
+test("formulir ekspor laporan mengarah ke lampiran JSON dan mendukung garis miring akhir", () => {
   const storage = new Map();
   run("g1-acq.js", { body: SOURCE, storage });
   const html = run("g1-sku-report.js", { url: REPORT + "/", storage }).payload.response.body;
   const action = html.match(/<form method=get action="([^"]+)"><button type=submit name=format value=json>/);
-  assert(action, "the visible export button must submit a GET form");
+  assert(action, "tombol ekspor yang terlihat harus mengirimkan formulir GET");
   const url = new URL(action[1]);
   url.searchParams.set("format", "json");
   assert.equal(url.href, REPORT + "?format=json");
@@ -448,7 +448,7 @@ test("report export form resolves to a JSON attachment and supports a trailing s
   }
 });
 
-test("report exports each actual target and separates annual hits from total hits", () => {
+test("laporan mengekspor setiap target aktual dan memisahkan hit tahunan dari total hit", () => {
   const storage = new Map();
   run("g1-acq.js", {
     body: JSON.stringify([SOURCE, TWENTY, THIRTY, THIRTY_FALLBACK]), storage
@@ -463,15 +463,15 @@ test("report exports each actual target and separates annual hits from total hit
     id: THIRTY, count: 1, to: THIRTY_FALLBACK, fallback: true
   });
   const html = run("g1-sku-report.js", { url: REPORT, storage }).payload.response.body;
-  assert(html.includes("最近一次三档映射"));
-  assert(html.includes("其中 2TB：1"));
+  assert(html.includes("Pemetaan Tiga Tingkat Terakhir"));
+  assert(html.includes("Di antaranya 2TB: 1"));
   assert(html.includes(TWENTY_TARGET));
   assert(html.includes(THIRTY_FALLBACK));
   assert(html.includes(THIRTY_FALLBACK + "</code></td><td>90p</td>"));
-  assert(html.includes("支持 Ultra 1个月免费试用"));
+  assert(html.includes("mendukung uji coba gratis 1 bulan Ultra"));
 });
 
-test("report preserves historical 75p fallbacks and keeps old 90p defaults distinct", () => {
+test("laporan mempertahankan cadangan 75p historis dan membedakan default 90p lama", () => {
   const previous = {
     schemaVersion: 1, version: "g1-acq-v7.5", target: TARGET, targetOrigin: "user-specified",
     hitCount: 2, annualHitCount: 0, status: "rewritten",
@@ -488,19 +488,19 @@ test("report preserves historical 75p fallbacks and keeps old 90p defaults disti
   assert.deepEqual(data.matchedFrom, previous.matchedFrom);
   const html = run("g1-sku-report.js", { url: REPORT, storage }).payload.response.body;
   assert(html.includes(LEGACY_TWENTY_FALLBACK + "</code></td><td>75p</td>"));
-  assert(html.includes(THIRTY_FALLBACK + "</code></td><td>否</td>"));
+  assert(html.includes(THIRTY_FALLBACK + "</code></td><td>Tidak</td>"));
   assert.equal(storage.get(TEST_KEY), before);
 });
 
-test("report does not invent a discount for a fallback whose target was not recorded", () => {
+test("laporan tidak mengarang diskon untuk cadangan yang targetnya tidak tercatat", () => {
   const storage = new Map([[TEST_KEY, JSON.stringify({
     schemaVersion: 1, version: "g1-acq-v7.5", matchedFrom: [{ id: TWENTY, count: 1, fallback: true }]
   })]]);
   const html = run("g1-sku-report.js", { url: REPORT, storage }).payload.response.body;
-  assert(html.includes("<code>未记录</code></td><td>是</td>"));
+  assert(html.includes("<code>Tidak tercatat</code></td><td>Ya</td>"));
 });
 
-test("new report displays existing v1 records with their original 2TB target", () => {
+test("laporan baru menampilkan catatan v1 yang ada dengan target 2TB aslinya", () => {
   const storage = new Map([[TEST_KEY, JSON.stringify({
     schemaVersion: 1, version: "pro-annual-test-v1", hitCount: 2, status: "rewritten",
     matchedFrom: [{ id: SOURCE, count: 2 }]
@@ -518,10 +518,10 @@ test("new report displays existing v1 records with their original 2TB target", (
     status: "no-match", matchedFrom: []
   }));
   const html = run("g1-sku-report.js", { url: REPORT, storage }).payload.response.body;
-  assert(html.includes("旧 v1 记录：本次响应未命中 iOS 2TB 前缀"));
+  assert(html.includes("Catatan v1 lama: respons ini tidak cocok dengan prefiks iOS 2TB"));
 });
 
-test("report preserves saved v7.1 through v7.5 targets and origins independently of current configuration", () => {
+test("laporan mempertahankan target dan asal v7.1 hingga v7.5 secara independen dari konfigurasi saat ini", () => {
   for (const prior of [
     { version: "g1-acq-v7.1", target: LEGACY_TARGET, origin: "legacy" },
     { version: "g1-acq-v7.2", target: "g1.2tb.ai.annual.3months_ip_90p.acq", origin: "pattern-derived" },
@@ -545,8 +545,8 @@ test("report preserves saved v7.1 through v7.5 targets and origins independently
     assert.equal(data.test.matchedFrom[0].to, prior.target);
     assert.equal(storage.get(TEST_KEY), before);
     const html = run("g1-sku-report.js", { url: REPORT, storage }).payload.response.body;
-    assert(html.includes("当前配置的 2TB 候选目标：<code>" + TARGET + "</code>"));
-    assert(html.includes("该次记录的 2TB 目标：<code>" + prior.target + "</code>"));
+    assert(html.includes("Target kandidat 2TB yang dikonfigurasi saat ini: <code>" + TARGET + "</code>"));
+    assert(html.includes("Target 2TB pada catatan ini: <code>" + prior.target + "</code>"));
   }
   const empty = JSON.parse(run("g1-sku-report.js", { url: REPORT + "?format=json" }).payload.response.body);
   assert.equal(empty.configuredTarget, TARGET);
@@ -555,7 +555,7 @@ test("report preserves saved v7.1 through v7.5 targets and origins independently
   assert.equal(empty.test.status, "");
 });
 
-test("JSON export is limited to report fields and escapes untrusted HTML text", () => {
+test("ekspor JSON dibatasi pada field laporan dan meng-escape teks HTML tidak tepercaya", () => {
   const storage = new Map([[SCAN_KEY, JSON.stringify({
     schemaVersion: 1, updatedAt: "<script>fixture</script>", scannedResponses: 1,
     secret: "must-not-export", body: "must-not-export",
@@ -571,7 +571,7 @@ test("JSON export is limited to report fields and escapes untrusted HTML text", 
   assert(htmlResult.payload.response.body.includes("&lt;img src=x&gt;"));
 });
 
-test("clear action affects only the tool's two storage keys", () => {
+test("aksi bersihkan hanya memengaruhi dua kunci penyimpanan milik alat ini", () => {
   const storage = new Map([
     [SCAN_KEY, JSON.stringify({ schemaVersion: 1, skus: [{ id: SOURCE, count: 1 }] })],
     [TEST_KEY, JSON.stringify({ schemaVersion: 1, hitCount: 1 })],
@@ -584,7 +584,7 @@ test("clear action affects only the tool's two storage keys", () => {
   assert.deepEqual(new Set(result.reads), new Set([SCAN_KEY, TEST_KEY]));
 });
 
-test("report handles unavailable storage and skips other URL paths", () => {
+test("laporan menangani penyimpanan tidak tersedia dan melewati path URL lainnya", () => {
   const unavailable = run("g1-sku-report.js", { url: REPORT + "?format=json", storageAvailable: false });
   assert.equal(JSON.parse(unavailable.payload.response.body).storageAvailable, false);
   for (const url of ["https://one.google.com/ai?x=1", REPORT + "-other", "https://example.test/g1-sku-report"]) {
@@ -594,7 +594,7 @@ test("report handles unavailable storage and skips other URL paths", () => {
   }
 });
 
-test("the new installer replaces the old entry and all modules share one fixed release", () => {
+test("pemasang baru menggantikan entri lama dan seluruh modul berbagi satu rilis tetap", () => {
   assert.equal(fs.existsSync(path.join(root, "g1-acq.sgmodule")), false);
   let scriptBase;
   for (const file of ["g1-acq-v7.sgmodule", "g1-pro-annual-test.sgmodule", "g1-sku-scan.sgmodule"]) {
@@ -604,7 +604,7 @@ test("the new installer replaces the old entry and all modules share one fixed r
     if (file === "g1-acq-v7.sgmodule") assert.match(module, /^#!name=G1 ACQ$/m);
     for (const script of scripts) {
       const url = script.match(/script-path=([^,\s]+)/)[1];
-      assert.match(url, /^https:\/\/cdn\.jsdelivr\.net\/gh\/crhywun\/g1-acq@v7\.6\.0\/[a-z0-9.-]+\.js$/);
+      assert.match(url, /^https:\/\/cdn\.jsdelivr\.net\/gh\/somaylab\/g1-acq@v7\.6\.0\/[a-z0-9.-]+\.js$/);
       const base = url.slice(0, url.lastIndexOf("/") + 1);
       if (!scriptBase) scriptBase = base;
       assert.equal(base, scriptBase);

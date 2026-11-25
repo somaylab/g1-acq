@@ -1,4 +1,5 @@
-/* Passive product-ID collection for Shadowrocket; original responses pass through. */
+/* Pengumpulan pasif ID produk untuk Shadowrocket; respons asli dilewatkan apa adanya.
+ * Penulis Asli: crhywun | Penerjemah Bahasa Indonesia: Somaylab (@somaylab) */
 "use strict";
 
 (function () {
@@ -40,7 +41,7 @@
     ids.push(row.id);
   });
 
-  // Decode escaped dots for discovery only. The response body is kept intact.
+  // Dekode titik yang di-escape hanya untuk penemuan. Isi respons tetap utuh.
   var text = body.replace(/\\u002e|\\x2e|&#0*46;|&#x0*2e;|&period;/gi, ".");
   var token = /(^|[^A-Za-z0-9._@%-])((?:g1\.|com\.google\.one\.)[A-Za-z0-9._-]+)(?=$|[^A-Za-z0-9._-])/g;
   var match;

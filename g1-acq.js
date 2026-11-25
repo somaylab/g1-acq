@@ -1,10 +1,11 @@
-/* Google One combined 2TB / 20TB / 30TB mappings for Shadowrocket. */
+/* Pemetaan gabungan Google One 2TB / 20TB / 30TB untuk Shadowrocket.
+ * Penulis Asli: crhywun | Penerjemah Bahasa Indonesia: Somaylab (@somaylab) */
 "use strict";
 
 (function () {
   var VERSION = "g1-acq-v7.6";
   var SOURCE_PREFIX = "g1.ios.2tb.";
-  // User-selected 12-month offer ID from the screenshot; store metadata is still unverified.
+  // ID promo 12 bulan pilihan pengguna dari tangkapan layar; metadata toko belum terverifikasi.
   var TARGET = "g1.2tb.ai.12months_ip_90p";
   var SKU_MAP = {
     "g1.ios.20tb.m.v2": "g1.20tb.1month_eft.acq",
@@ -45,10 +46,10 @@
   var out = body;
 
   if (typeof body === "string") {
-    // Select each tier's free-trial or 90p fallback SKU from the original response.
-    // These are observed strings, not a verified store catalog.
+    // Pilih SKU uji coba gratis atau cadangan 90p untuk tiap tingkat dari respons asli.
+    // Ini adalah string yang teramati, bukan katalog toko yang terverifikasi.
     var observed = body.match(/g1\.[a-z0-9._]{2,60}acq/g) || [];
-    // Match complete tokens before selecting 2TB or the two existing source IDs.
+    // Cocokkan token utuh sebelum memilih 2TB atau dua ID sumber yang ada.
     out = body.replace(
       /(^|[^A-Za-z0-9._@%-])(g1\.[A-Za-z0-9._-]+)(?=$|[^A-Za-z0-9._-])/g,
       function (match, before, id) {
@@ -86,7 +87,7 @@
     target: TARGET,
     targetOrigin: "user-specified",
     hitCount: hits,
-    // Legacy field name: counts 2TB/Pro rewrites, not the billing interval.
+    // Nama field warisan: menghitung penulisan ulang 2TB/Pro, bukan interval penagihan.
     annualHitCount: annualHits,
     matchedFrom: sources,
     status: typeof body !== "string" ? "non-text" : hits ? "rewritten" : "no-match"
@@ -144,7 +145,7 @@
     var omittedCount = 0;
     var truncated = saved.truncated === true;
     if (isText) {
-      // Decode escaped dots on a discovery copy before rewriting the original body.
+      // Dekode titik yang di-escape pada salinan penemuan sebelum menulis ulang isi asli.
       var text = originalBody.replace(/\\u002e|\\x2e|&#0*46;|&#x0*2e;|&period;/gi, ".");
       var token = /(^|[^A-Za-z0-9._@%-])((?:g1\.|com\.google\.one\.)[A-Za-z0-9._-]+)(?=$|[^A-Za-z0-9._-])/g;
       var match;
@@ -177,7 +178,7 @@
       var event = priorResponse(row);
       if (event) recentResponses.push(event);
     });
-    // Preserve arrival order even if the device clock moves backward.
+    // Pertahankan urutan kedatangan meskipun jam perangkat mundur.
     recentResponses.push({
       at: now,
       path: safeRoute(url),
@@ -226,7 +227,7 @@
     path = path.replace(/\/+$/, "") || "/";
     if (path === "/" || path === "/ai" || path === "/plans") return path;
     if (/^\/_\/[^?#]+\/data\/batchexecute$/.test(path)) return "/_/…/data/batchexecute";
-    return "[其他 one.google.com 路径]";
+    return "[Path one.google.com lainnya]";
   }
 
   function responseStatus(bodyType, candidateCount, addedCount, omittedCount) {
@@ -241,7 +242,7 @@
     if (typeof row.at !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(row.at) ||
         !isFinite(Date.parse(row.at)) || new Date(row.at).toISOString() !== row.at) return null;
     if (row.path !== "/" && row.path !== "/ai" && row.path !== "/plans" &&
-        row.path !== "/_/…/data/batchexecute" && row.path !== "[其他 one.google.com 路径]") return null;
+        row.path !== "/_/…/data/batchexecute" && row.path !== "[Path one.google.com lainnya]") return null;
     if (row.bodyType !== "text" && row.bodyType !== "non-text") return null;
 
     function counter(value, maximum) {
