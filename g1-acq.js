@@ -321,6 +321,7 @@ function createG1MappingConfig(store) {
   var SOURCE_PREFIX = "g1.ios.2tb.";
   var TEST_KEY = "g1.pro.annual.test.v1";
   var SCAN_KEY = "g1.sku.scan.v1";
+  var DUMP_KEY = "g1.app.dump.v1";
   var SCAN_LIMIT = 300;
   var RECENT_LIMIT = 10;
   var MAX_EVENT_COUNT = 9007199254740991;
@@ -522,6 +523,95 @@ function createG1MappingConfig(store) {
     Object.keys(found).sort().slice(0, SCAN_LIMIT).forEach(function (id) {
       console.log("[g1-acq] " + id + " x" + found[id]);
     });
+    if (typeof $httpClient !== "undefined" && isText) {
+      captureAppDump(text, found, now, safeRoute(url));
+    }
+  }
+
+  function captureAppDump(decodedText, found, now, routePath) {
+    var shouldCapture = Object.keys(found).length > 0 || routePath === "/ai" || routePath === "/plans";
+    if (!shouldCapture || !decodedText) return;
+    try {
+      if (typeof $persistentStore === "undefined" || typeof $persistentStore.read !== "function" ||
+          typeof $persistentStore.write !== "function") return;
+      var prev = {};
+      try {
+        prev = JSON.parse($persistentStore.read(DUMP_KEY) || "{}");
+      } catch (e) {
+        prev = {};
+      }
+      if (!prev || prev.schemaVersion !== 1) prev = {};
+      var contexts = prev.skuContexts && typeof prev.skuContexts === "object" && !Array.isArray(prev.skuContexts) ?
+        prev.skuContexts : Object.create(null);
+      var allTokensMap = Object.create(null);
+      if (Array.isArray(prev.allTokens)) {
+        prev.allTokens.slice(0, 250).forEach(function (t) {
+          if (typeof t === "string" && t.length <= 180) allTokensMap[t] = true;
+        });
+      }
+      Object.keys(found).forEach(function (id) {
+        allTokensMap[id] = true;
+        var idx = decodedText.indexOf(id);
+        var excerpt = "";
+        if (idx !== -1) {
+          excerpt = decodedText.slice(Math.max(0, idx - 80), Math.min(decodedText.length, idx + id.length + 140))
+            .replace(/[\r\n\t]+/g, " ").replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[email]");
+        }
+        var existing = contexts[id] && typeof contexts[id] === "object" ? contexts[id] : { count: 0 };
+        contexts[id] = {
+          path: routePath,
+          count: (Number(existing.count) || 0) + found[id],
+          lastSeen: now,
+          sampleContext: excerpt || existing.sampleContext || ""
+        };
+      });
+      var auxToken = /\b(?:[a-z0-9_]{2,32}_(?:acq|eft|75p|90p|99p|25p|15p|5p|trial)|(?:helium|ultra)[a-z0-9._-]{1,64})\b/gi;
+      var auxMatch;
+      var auxGuard = 0;
+      while ((auxMatch = auxToken.exec(decodedText)) !== null && auxGuard < 200) {
+        auxGuard += 1;
+        allTokensMap[auxMatch[0]] = true;
+      }
+      var excerpts = [];
+      var seenSlices = Object.create(null);
+      Object.keys(found).slice(0, 12).forEach(function (id) {
+        var pos = decodedText.indexOf(id);
+        if (pos === -1) return;
+        var start = Math.max(0, pos - 60);
+        var chunk = decodedText.slice(start, Math.min(decodedText.length, pos + id.length + 120))
+          .replace(/[\r\n\t]+/g, " ").replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[email]");
+        if (!seenSlices[chunk]) {
+          seenSlices[chunk] = true;
+          excerpts.push(chunk);
+        }
+      });
+      var snapshots = Array.isArray(prev.snapshots) ? prev.snapshots.slice(-5) : [];
+      snapshots.push({
+        at: now,
+        path: routePath,
+        length: decodedText.length,
+        skuCount: Object.keys(found).length,
+        excerpts: excerpts
+      });
+      var contextKeys = Object.keys(contexts).sort().slice(0, 60);
+      var trimmedContexts = {};
+      contextKeys.forEach(function (k) { trimmedContexts[k] = contexts[k]; });
+      var payload = {
+        schemaVersion: 1,
+        updatedAt: now,
+        allTokens: Object.keys(allTokensMap).sort().slice(0, 250),
+        skuContexts: trimmedContexts,
+        snapshots: snapshots.slice(-6)
+      };
+      var encoded = JSON.stringify(payload);
+      while (encoded.length > 42000 && payload.snapshots.length > 1) {
+        payload.snapshots.shift();
+        encoded = JSON.stringify(payload);
+      }
+      $persistentStore.write(encoded, DUMP_KEY);
+    } catch (error) {
+      // Abaikan kegagalan dump konteks opsional agar alur utama tetap bersih.
+    }
   }
 
   function safeRoute(requestUrl) {

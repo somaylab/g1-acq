@@ -4,7 +4,7 @@
 
 (function () {
   var ROOT = "https://one.google.com/g1-sku-report";
-  var VERSION = "v7.12.1";
+  var VERSION = "v7.12.2";
   var COLLECTOR_VERSION = "g1-acq-v7.12-mappings";
   var MODE_NAMES = {
     discount75: "Ultra 3 Bulan 75p (Diskon 75% / Bayar 25%)",
@@ -16,6 +16,8 @@
   var LEGACY_TARGET = "g1.2tb.ai.annual";
   var SCAN_KEY = "g1.sku.scan.v1";
   var TEST_KEY = "g1.pro.annual.test.v1";
+  var DUMP_KEY = "g1.app.dump.v1";
+  var SYNC_URL = "https://ntfy.sh/somaylab_g1_acq_5bf9610c2f1145a7";
   var ROUTE_OTHER = "[Path one.google.com lainnya]";
 
   // BEGIN GENERATED MAPPING CONFIG
@@ -362,6 +364,7 @@ function createG1MappingConfig(store) {
   var actionError = "";
   var formDraft = null;
   var clearMessage = "";
+  var quickfixNotice = "";
 
   if (method === "POST") {
     // Hanya field metadata permintaan berikut yang dibaca; cookie dan otorisasi tidak digunakan.
@@ -424,9 +427,60 @@ function createG1MappingConfig(store) {
     try {
       var scanCleared = storage.write("{}", SCAN_KEY);
       var testCleared = storage.write("{}", TEST_KEY);
+      if (typeof $httpClient !== "undefined") storage.write("{}", DUMP_KEY);
       clearMessage = scanCleared && testCleared ? "Kedua catatan lokal alat ini telah dikosongkan, konfigurasi pemetaan tetap dipertahankan." : "Pembersihan catatan lokal belum selesai.";
     } catch (error) {
       clearMessage = "Antarmuka penyimpanan lokal belum siap.";
+    }
+  } else if (!exportJSON && query("quickfix")) {
+    var qf = query("quickfix");
+    var qfSets = {
+      pro99: [
+        { match: "prefix", from: "g1.ios.2tb.", to: "com.google.gemini.2tb.ai.m.3month_ip_99p", enabled: true },
+        { match: "prefix", from: "g1.ios.ai.2tb.", to: "com.google.gemini.2tb.ai.m.3month_ip_99p", enabled: true },
+        { match: "prefix", from: "g1.ios.helium.", to: "com.google.gemini.2tb.ai.m.3month_ip_99p", enabled: true }
+      ],
+      pro90: [
+        { match: "prefix", from: "g1.ios.2tb.", to: "g1.2tb.ai.12months_ip_90p", enabled: true },
+        { match: "prefix", from: "g1.ios.ai.2tb.", to: "g1.2tb.ai.12months_ip_90p", enabled: true },
+        { match: "prefix", from: "g1.ios.helium.", to: "g1.2tb.ai.12months_ip_90p", enabled: true }
+      ],
+      ultra75: [
+        { match: "exact", from: "g1.ios.20tb.m.v2", to: "g1.20tb.3months_ip_75p.acq", enabled: true },
+        { match: "exact", from: "g1.ios.30tb.ai.pro.m", to: "g1.ai.ultra.3months_ip_75p.acq", enabled: true },
+        { match: "prefix", from: "g1.ios.ai.2tb.", to: "g1.ai.ultra.3months_ip_75p.acq", enabled: true },
+        { match: "prefix", from: "g1.ios.2tb.", to: "g1.ai.ultra.3months_ip_75p.acq", enabled: true }
+      ]
+    };
+    if (Object.prototype.hasOwnProperty.call(qfSets, qf)) {
+      var qRules = config.rules.slice();
+      var qPos = Object.create(null);
+      var qIds = Object.create(null);
+      qRules.forEach(function (r, idx) {
+        qIds[r.id] = true;
+        qPos[r.match + ":" + r.from] = idx;
+      });
+      qfSets[qf].forEach(function (targetRule) {
+        var key = targetRule.match + ":" + targetRule.from;
+        if (typeof qPos[key] === "number") {
+          var exist = qRules[qPos[key]];
+          qRules[qPos[key]] = { id: exist.id, match: targetRule.match, from: targetRule.from, to: targetRule.to, enabled: true };
+        } else {
+          var newRuleId = engine.newId();
+          for (var n = 1; n <= qRules.length && qIds[newRuleId]; n += 1) newRuleId = engine.newId() + "-" + n;
+          qIds[newRuleId] = true;
+          qPos[key] = qRules.length;
+          qRules.push({ id: newRuleId, match: targetRule.match, from: targetRule.from, to: targetRule.to, enabled: true });
+        }
+      });
+      var qSaved = engine.save(config.revision, qRules, false);
+      if (qSaved.ok) {
+        config = qSaved.config;
+        quickfixNotice = "Pemetaan otomatis selesai diterapkan untuk semua keluarga SKU (Pro 2TB, AI Pro 2TB, & AI Plus). Buka ulang halaman paket Google One untuk menguji.";
+      } else {
+        actionError = qSaved.error;
+        config = engine.read();
+      }
     }
   }
 
@@ -639,12 +693,24 @@ function createG1MappingConfig(store) {
     }
   };
 
+  var appDump = null;
+  if (typeof $httpClient !== "undefined" || query("dump") === "1" || query("sync") === "1") {
+    var rawDump = load(DUMP_KEY);
+    if (rawDump && rawDump.schemaVersion === 1) appDump = rawDump;
+  }
+
   console.log("[g1-sku-report] " + VERSION + " " + (exportJSON ? "json" : "html") +
     " storage=" + (storageAvailable ? "ready" : "unavailable") + " candidates=" + report.scan.skus.length);
   if (exportJSON) {
     headers["Content-Type"] = "application/json; charset=utf-8";
     headers["Content-Disposition"] = 'attachment; filename="g1-sku-report.json"';
     $done({ response: { status: 200, headers: headers, body: JSON.stringify(report, null, 2) } });
+    return;
+  }
+  if (method === "GET" && query("dump") === "1") {
+    headers["Content-Type"] = "application/json; charset=utf-8";
+    headers["Content-Disposition"] = 'attachment; filename="g1-app-dump.json"';
+    $done({ response: { status: 200, headers: headers, body: JSON.stringify({ dumpedAt: new Date().toISOString(), report: report, appDump: appDump }, null, 2) } });
     return;
   }
 
@@ -658,77 +724,74 @@ function createG1MappingConfig(store) {
   }
   function describeSku(id) {
     var exactMap = {
-      "g1.2tb.ai.12months_ip_90p": { tier: "Target Pro", cls: "tier-target", label: "Pro 2TB · 12 Bln Diskon 90%" },
-      "g1.2tb.ai.annual": { tier: "Target Pro", cls: "tier-target", label: "Pro 2TB · Tahunan 99p (Warisan)" },
-      "g1.2tb.1month_eft": { tier: "Target Pro", cls: "tier-target", label: "Pro 2TB · Uji Coba 1 Bln" },
-      "g1.2tb.3months_ip_90p": { tier: "Target Pro", cls: "tier-target", label: "Pro 2TB · 3 Bln Diskon 90%" },
-      "g1.100gb.1month_eft": { tier: "Target Basic", cls: "tier-target", label: "Basic 100GB · Uji Coba 1 Bln" },
-      "g1.ai.ultra.1month_eft": { tier: "Target Ultra", cls: "tier-ultra", label: "Ultra · Uji Coba 1 Bln" },
-      "g1.ai.ultra.3months_ip_90p.acq": { tier: "Target Ultra", cls: "tier-ultra", label: "Ultra · 3 Bln Diskon 90%" },
-      "g1.ai.ultra.3months_ip_75p.acq": { tier: "Target Ultra", cls: "tier-ultra", label: "Ultra · 3 Bln Diskon 75%" },
-      "g1.20tb.3months_ip_75p.acq": { tier: "Target Turki 20TB", cls: "tier-turki", label: "Turki 20TB · 3 Bln Diskon 75%" },
-      "g1.30tb.3months_ip_75p.acq": { tier: "Target Turki 30TB", cls: "tier-turki", label: "Turki 30TB · 3 Bln Diskon 75%" },
-      "g1.ios.ai.2tb.": { tier: "AI Pro 2TB", cls: "tier-ai-pro", label: "Semua paket AI Pro 2TB iOS" },
-      "g1.ios.2tb.": { tier: "Pro 2TB", cls: "tier-pro", label: "Semua paket Pro 2TB iOS" },
-      "g1.ios.helium.": { tier: "AI Plus", cls: "tier-plus", label: "Semua paket AI Plus (Helium) iOS" },
-      "g1.ios.20tb.m.v2": { tier: "Ultra 20TB", cls: "tier-ultra", label: "Ultra / Turki 20TB Bulanan" },
-      "g1.ios.30tb.m.v2": { tier: "Ultra 30TB", cls: "tier-ultra", label: "Ultra / Turki 30TB Bulanan" },
-      "g1.ios.20tb.": { tier: "Ultra 20TB", cls: "tier-ultra", label: "Semua paket Ultra 20TB iOS" },
-      "g1.ios.30tb.": { tier: "Ultra 30TB", cls: "tier-ultra", label: "Semua paket Ultra 30TB iOS" }
+      "com.google.gemini.2tb.ai.m.3month_ip_99p": { tier: "Target Pro 99%", cls: "t-ok", label: "Target Pro 2TB · 3 Bln Diskon 99%" },
+      "g1.2tb.ai.12months_ip_90p": { tier: "Target Pro 90%", cls: "t-ok", label: "Target Pro 2TB · 12 Bln Diskon 90%" },
+      "g1.2tb.ai.annual": { tier: "Target Pro", cls: "t-ok", label: "Target Pro 2TB · Tahunan" },
+      "g1.2tb.1month_eft": { tier: "Target Pro", cls: "t-ok", label: "Target Pro 2TB · Uji Coba 1 Bln" },
+      "g1.2tb.3months_ip_90p": { tier: "Target Pro", cls: "t-ok", label: "Target Pro 2TB · 3 Bln Diskon 90%" },
+      "g1.100gb.1month_eft": { tier: "Target Basic", cls: "t-ok", label: "Target Basic 100GB · Uji Coba 1 Bln" },
+      "g1.ai.ultra.1month_eft": { tier: "Target Ultra", cls: "t-ok", label: "Target Ultra · Uji Coba 1 Bln" },
+      "g1.ai.ultra.3months_ip_90p.acq": { tier: "Target Ultra 90%", cls: "t-ok", label: "Target Ultra · 3 Bln Diskon 90%" },
+      "g1.ai.ultra.3months_ip_75p.acq": { tier: "Target Ultra 75%", cls: "t-ok", label: "Target AI Ultra · 3 Bln Diskon 75%" },
+      "g1.20tb.3months_ip_75p.acq": { tier: "Target 20TB 75%", cls: "t-ok", label: "Target 20TB · 3 Bln Diskon 75%" },
+      "g1.30tb.3months_ip_75p.acq": { tier: "Target 30TB 75%", cls: "t-ok", label: "Target 30TB · 3 Bln Diskon 75%" },
+      "g1.ios.20tb.m": { tier: "Target Turki 20TB", cls: "t-ok", label: "Target Turki 20TB · 1989.99 TRY" },
+      "g1.ios.30tb.m": { tier: "Target Turki 30TB", cls: "t-ok", label: "Target Turki 30TB · 2949.99 TRY" },
+      "g1.ios.ai.2tb.": { tier: "AI Pro 2TB", cls: "t-hi", label: "Semua paket AI Pro 2TB iOS" },
+      "g1.ios.2tb.": { tier: "Pro 2TB", cls: "t-hi", label: "Semua paket Pro 2TB iOS" },
+      "g1.ios.helium.": { tier: "AI Plus", cls: "t-hi", label: "Semua paket AI Plus (Helium) iOS" },
+      "g1.ios.20tb.m.v2": { tier: "Ultra 20TB", cls: "t-hi", label: "Paket iOS 20TB Bulanan" },
+      "g1.ios.30tb.ai.pro.m": { tier: "Ultra 30TB", cls: "t-hi", label: "Paket iOS AI Ultra 30TB Bulanan" },
+      "g1.ios.20tb.": { tier: "Ultra 20TB", cls: "t-hi", label: "Semua paket Ultra 20TB iOS" },
+      "g1.ios.30tb.": { tier: "Ultra 30TB", cls: "t-hi", label: "Semua paket Ultra 30TB iOS" }
     };
     if (Object.prototype.hasOwnProperty.call(exactMap, id)) return exactMap[id];
     var s = String(id || "").toLowerCase();
-    var tier = "SKU Lain";
-    var cls = "tier-neutral";
+    var tier = "Lainnya";
+    var cls = "t-dim";
     var parts = [];
     if (s.indexOf("ultra") !== -1 || s.indexOf("30tb") !== -1) {
       tier = s.indexOf("30tb") !== -1 ? "Ultra 30TB" : "Ultra";
-      cls = "tier-ultra";
+      cls = "t-hi";
       parts.push(s.indexOf("30tb") !== -1 ? "Paket Ultra 30TB" : "Paket AI Ultra");
     } else if (s.indexOf("20tb") !== -1) {
       tier = "Ultra 20TB";
-      cls = "tier-ultra";
-      parts.push("Paket Ultra / 20TB");
+      cls = "t-hi";
+      parts.push("Paket Ultra 20TB");
     } else if (s.indexOf("helium") !== -1 || s.indexOf("ai_plus") !== -1) {
       tier = "AI Plus";
-      cls = "tier-plus";
+      cls = "t-hi";
       parts.push("Paket AI Plus (Helium)");
     } else if (s.indexOf("ai.2tb") !== -1 || s.indexOf("2tb.ai") !== -1) {
       tier = "AI Pro 2TB";
-      cls = "tier-ai-pro";
+      cls = "t-hi";
       parts.push("Paket AI Pro 2TB");
     } else if (s.indexOf("2tb") !== -1) {
       tier = "Pro 2TB";
-      cls = "tier-pro";
+      cls = "t-hi";
       parts.push("Paket Pro 2TB");
     } else if (s.indexOf("200gb") !== -1) {
-      tier = "Basic 200GB";
-      cls = "tier-basic";
+      tier = "200GB";
       parts.push("Paket Basic 200GB");
     } else if (s.indexOf("100gb") !== -1) {
       tier = "Basic 100GB";
-      cls = "tier-basic";
       parts.push("Paket Basic 100GB");
+    } else if (s.indexOf("30gb") !== -1) {
+      tier = "Lite 30GB";
+      parts.push("Paket Lite 30GB");
     } else {
-      parts.push("Produk Google One");
+      parts.push("SKU Google One");
     }
-    if (/\.(a|annual)\b|_1yr_|12months/.test(s)) parts.push("Tahunan");
-    else if (/\.(m|monthly)\b|_3mo_|3months|1month/.test(s)) parts.push("Bulanan / Promo");
-    if (s.indexOf("90p") !== -1) parts.push("Diskon 90%");
+    if (/\.(a|annual)\b|_1yr_|12month/.test(s)) parts.push("Tahunan");
+    else if (/\.(m|monthly)\b|_3mo_|3month|1month/.test(s)) parts.push("Bulanan");
+    if (s.indexOf("99p") !== -1) parts.push("Diskon 99%");
+    else if (s.indexOf("90p") !== -1) parts.push("Diskon 90%");
     else if (s.indexOf("75p") !== -1) parts.push("Diskon 75%");
     else if (s.indexOf("25p") !== -1) parts.push("Diskon 25%");
+    else if (s.indexOf("15p") !== -1) parts.push("Diskon 15%");
+    else if (s.indexOf("5p") !== -1) parts.push("Diskon 5%");
     else if (s.indexOf("free_trial") !== -1 || s.indexOf("_eft") !== -1) parts.push("Uji Coba");
     return { tier: tier, cls: cls, label: parts.join(" · ") };
-  }
-  function tierBadge(id) {
-    var info = describeSku(id);
-    return "<span class=\"tier " + info.cls + "\">" + escape(info.tier) + "</span>";
-  }
-  function skuMetaCell(id, showTier) {
-    if (!id) return "";
-    var info = describeSku(id);
-    return "<div class=sku-meta>" + (showTier ? "<span class=\"tier " + info.cls + "\">" + escape(info.tier) + "</span>" : "") +
-      "<span class=sku-desc>" + escape(info.label) + "</span></div>";
   }
   function fallbackName(row) {
     if (!row.fallback) return "Tidak";
@@ -736,21 +799,38 @@ function createG1MappingConfig(store) {
     return discount ? discount[1] : "Ya";
   }
   function table(items, withTime) {
-    if (!items.length) return "<p class=empty-state>Belum ada catatan.</p>";
-    return "<div class=scroll><table><thead><tr><th>ID Produk Lengkap</th><th>Jumlah</th>" +
-      (withTime ? "<th>Waktu Terakhir Ditemukan (UTC)</th><th>Tambah Pemetaan</th>" : "<th>SKU Target Aktual</th><th>Cadangan</th>") + "</tr></thead><tbody>" +
+    if (!items.length) return "<p class=muted>Belum ada catatan.</p>";
+    return "<div class=scroll><table><thead><tr><th>ID Produk</th><th>Hit</th>" +
+      (withTime ? "<th>Waktu Terakhir Ditemukan (UTC)</th><th>Aksi</th>" : "<th>SKU Target Aktual</th><th>Cadangan</th>") + "</tr></thead><tbody>" +
       items.map(function (row) {
-        var targetMeta = row.to ? skuMetaCell(row.to, true) : "";
-        return "<tr><td>" + skuMetaCell(row.id, true) + "<code>" + escape(row.id) + "</code></td><td class=num>" + row.count + "</td>" +
-          (withTime ? "<td class=mono-time>" + escape(row.lastSeen) + "</td><td><a class=chip-btn href=\"" + ROOT + "?from=" + escape(encodeURIComponent(row.id)) + "#new-mapping\">Jadikan SKU Asal</a></td>" :
-            "<td>" + targetMeta + "<code>" + escape(row.to || "Belum tercatat") + "</code></td><td>" + fallbackName(row) + "</td>") + "</tr>";
+        var info = describeSku(row.id);
+        var targetLabel = row.to ? "<div class=sub-txt>" + escape(describeSku(row.to).label) + "</div>" : "";
+        return "<tr><td><div class=sub-txt><span class=\"tag " + info.cls + "\">" + escape(info.tier) + "</span> " + escape(info.label) + "</div><code>" + escape(row.id) + "</code></td><td class=num>" + row.count + "</td>" +
+          (withTime ? "<td class=mono-t>" + escape(row.lastSeen) + "</td><td><a class=btn-sm href=\"" + ROOT + "?from=" + escape(encodeURIComponent(row.id)) + "#new-mapping\">Jadikan SKU Asal</a></td>" :
+            "<td>" + targetLabel + "<code>" + escape(row.to || "Belum tercatat") + "</code></td><td>" + fallbackName(row) + "</td>") + "</tr>";
       }).join("") + "</tbody></table></div>";
   }
+  function appDumpSection() {
+    if (!appDump || !appDump.skuContexts) return "";
+    var ids = Object.keys(appDump.skuContexts).sort();
+    if (!ids.length) return "";
+    var rowsHtml = ids.slice(0, 60).map(function (id) {
+      var ctx = appDump.skuContexts[id] || {};
+      var info = describeSku(id);
+      return "<tr><td><div class=sub-txt>" + escape(info.tier) + " (" + (ctx.count || 0) + "x)</div><code>" + escape(id) + "</code></td>" +
+        "<td><code>" + escape(ctx.path || "") + "</code></td>" +
+        "<td class=ctx-cell><code>" + escape(ctx.sampleContext || "") + "</code></td></tr>";
+    }).join("");
+    var tokCount = Array.isArray(appDump.allTokens) ? appDump.allTokens.length : 0;
+    return "<div class=sub-block><h3>Konteks Payload Aplikasi (" + ids.length + " SKU · " + tokCount + " token)</h3>" +
+      "<p class=muted>Potongan respons asli di sekitar SKU dari aplikasi Google One (terakhir: " + escape(appDump.updatedAt || "-") + ").</p>" +
+      "<div class=scroll><table><thead><tr><th>SKU</th><th>Path</th><th>Konteks Sekitar SKU</th></tr></thead><tbody>" + rowsHtml + "</tbody></table></div></div>";
+  }
   function recentTable(events) {
-    if (!events.length) return "<p class=empty-state>Belum ada catatan respons per kejadian; data pengumpulan versi lama tidak memiliki diagnostik ini.</p>";
+    if (!events.length) return "<p class=muted>Belum ada catatan respons per kejadian; data pengumpulan versi lama tidak memiliki diagnostik ini.</p>";
     return "<div class=scroll><table><thead><tr><th>Waktu (UTC)</th><th>Kategori Path</th><th>Hasil Kali Ini</th><th>ID Terdeteksi</th><th>Baru Dicatat</th><th>Di Luar Kapasitas</th></tr></thead><tbody>" +
       events.slice().reverse().map(function (event) {
-        return "<tr><td class=mono-time>" + escape(event.at) + "</td><td><code>" + escape(event.path) +
+        return "<tr><td class=mono-t>" + escape(event.at) + "</td><td><code>" + escape(event.path) +
           "</code></td><td>" + scanStatuses[event.status] + "</td><td class=num>" + event.candidateCount +
           "</td><td class=num>" + event.addedCount + "</td><td class=num>" + event.omittedCount + "</td></tr>";
       }).join("") + "</tbody></table></div>";
@@ -768,7 +848,7 @@ function createG1MappingConfig(store) {
     reset: "Berhasil memulihkan tiga aturan pemetaan bawaan; riwayat pengumpulan dan eksekusi tetap dipertahankan."
   };
   var notice = query("notice");
-  var noticeText = method === "GET" && config.updatedAt && Object.prototype.hasOwnProperty.call(notices, notice) ? notices[notice] : "";
+  var noticeText = quickfixNotice || (method === "GET" && config.updatedAt && Object.prototype.hasOwnProperty.call(notices, notice) ? notices[notice] : "");
   var prefill = query("from");
   var prefillTo = query("to");
   var hasPrefillPrefix = validPrefix(prefill);
@@ -796,17 +876,52 @@ function createG1MappingConfig(store) {
   function revisionInput() {
     return "<input type=hidden name=revision value=\"" + escape(config.revision) + "\">";
   }
+  function familyCoverageSection() {
+    var families = [
+      { title: "AI Pro 2TB", matchFn: function (id) { return /^g1\.ios\.ai\.2tb\./.test(id); }, sample: "g1.ios.ai.2tb.m.ip_3mo_75p.acq" },
+      { title: "AI Plus (Helium)", matchFn: function (id) { return /^g1\.ios\.helium\./.test(id); }, sample: "g1.ios.helium.m.3month_ip_75p.acq" },
+      { title: "Pro 2TB Standar", matchFn: function (id) { return /^g1\.ios\.2tb\./.test(id); }, sample: "g1.ios.2tb.m.3month_ip_75p" },
+      { title: "Ultra 20TB", matchFn: function (id) { return /^g1\.ios\.20tb\./.test(id); }, sample: "g1.ios.20tb.m.v2" },
+      { title: "Ultra 30TB", matchFn: function (id) { return /^g1\.ios\.30tb\./.test(id); }, sample: "g1.ios.30tb.ai.pro.m" },
+      { title: "Basic / Lite (30GB–100GB)", matchFn: function (id) { return /^g1\.ios\.(?:30|100|200)gb\./.test(id); }, sample: "g1.ios.100gb.m.3month_ip_75p" }
+    ];
+    var tableRows = families.map(function (fam) {
+      var seenHits = 0;
+      var foundSample = "";
+      report.scan.skus.forEach(function (row) {
+        if (fam.matchFn(row.id)) {
+          seenHits += row.count;
+          if (!foundSample) foundSample = row.id;
+        }
+      });
+      var testId = foundSample || fam.sample;
+      var rule = validConfig ? engine.resolve(testId, config) : null;
+      var targetInfo = rule ? describeSku(rule.to) : null;
+      return "<tr><td><strong>" + escape(fam.title) + "</strong><div class=sub-txt>" +
+        (seenHits ? "Terdeteksi " + seenHits + "x di aplikasi" : "Contoh: " + escape(fam.sample)) + "</div></td>" +
+        "<td>" + (rule ? "<span class=\"tag t-ok\">Aktif</span>" : "<span class=\"tag t-warn\">Belum dipetakan</span>") + "</td>" +
+        "<td>" + (rule ? "<div class=sub-txt>" + escape(targetInfo.label) + "</div><code>" + escape(rule.to) + "</code>" : "<span class=muted>Dibiarkan asli oleh skrip</span>") + "</td></tr>";
+    }).join("");
+    return "<section class=card><div class=card-head><h2>Status Pemetaan Paket Aplikasi</h2>" +
+      "<span class=meta>" + enabledCount + "/" + config.rules.length + " aturan aktif</span></div>" +
+      "<p class=muted>Memeriksa paket Google One yang muncul di iPhone apakah sudah tertangkap aturan saat ini atau masih terlewat.</p>" +
+      "<div class=scroll><table><thead><tr><th>Paket</th><th>Status</th><th>Target Pengganti</th></tr></thead><tbody>" + tableRows + "</tbody></table></div>" +
+      "<div class=qf-bar><span class=qf-label>Perbaiki Sekali Klik (Semua Pro + AI Pro 2TB + AI Plus):</span>" +
+      "<form method=get action=\"" + ROOT + "\" class=qf-forms>" +
+      "<button class=primary type=submit name=quickfix value=pro99" + (!writable || !validConfig ? " disabled" : "") + ">Semua Pro/AI → Promo 99%</button>" +
+      "<button type=submit name=quickfix value=pro90" + (!writable || !validConfig ? " disabled" : "") + ">Semua Pro/AI → 12 Bln 90%</button>" +
+      "<button type=submit name=quickfix value=ultra75" + (!writable || !validConfig ? " disabled" : "") + ">Ultra 20TB/30TB + AI → 75%</button>" +
+      "</form></div></section>";
+  }
   function presetTemplates() {
-    return "<section id=mapping-presets class=panel>" +
-      "<div class=section-head><div><span class=eyebrow>Langkah 1 · Konfigurasi Cepat</span><h2>Templat Pemetaan Siap Pakai</h2></div></div>" +
-      "<p class=lead-note>Pilih skenario paket target yang ingin langsung diaktifkan pada perangkat ini.</p>" +
-      "<details class=info-drawer><summary>Cara kerja templat &amp; aturan kompatibilitas</summary><div class=drawer-body>" +
+    return "<section id=mapping-presets class=card><div class=card-head><h2>Templat Pemetaan Siap Pakai</h2></div>" +
+      "<details class=sub-drawer><summary>Catatan cara kerja &amp; kompatibilitas templat</summary><div class=sub-drawer-body>" +
       "<p>Setelah pemasangan atau upgrade, klik \"Terapkan Templat\" untuk menyimpan aturan terkait; proses upgrade tetap mempertahankan konfigurasi sebelumnya. Aturan dengan cara pencocokan dan SKU asal yang sama akan diperbarui dan diaktifkan, sedangkan aturan manual dan riwayat lain tetap dipertahankan.</p>" +
-      "<p class=note>Promo Pro 99p dan Turki 20TB dapat digunakan bersamaan. Templat Pro 99p dan Pro 12 Bulan mengalihkan awalan Pro yang sama; Turki 20TB dan Ultra 75p mengalihkan entri 20TB.</p>" +
-      "<p class=note>Menerapkan Promo Pro 99p akan menonaktifkan aturan warisan \"20TB -> Pro Gemini\", sementara target 20TB lainnya tetap dipertahankan; setelah itu masuk kembali melalui halaman paket Pro sendiri.</p>" +
-      "<p class=note>Setelah menyimpan, buka ulang halaman paket agar respons cocok berikutnya memakai konfigurasi baru. Label di kartu hanya membandingkan konfigurasi lokal; pastikan juga versi skrip, revisi konfigurasi, dan target aktual pada bagian Eksekusi Pemetaan Terakhir.</p>" +
+      "<p class=muted>Promo Pro 99p dan Turki 20TB dapat digunakan bersamaan. Templat Pro 99p dan Pro 12 Bulan mengalihkan awalan Pro yang sama; Turki 20TB dan Ultra 75p mengalihkan entri 20TB.</p>" +
+      "<p class=muted>Menerapkan Promo Pro 99p akan menonaktifkan aturan warisan \"20TB -> Pro Gemini\", sementara target 20TB lainnya tetap dipertahankan; setelah itu masuk kembali melalui halaman paket Pro sendiri.</p>" +
+      "<p class=muted>Setelah menyimpan, buka ulang halaman paket agar respons cocok berikutnya memakai konfigurasi baru. Label di kartu hanya membandingkan konfigurasi lokal; pastikan juga versi skrip, revisi konfigurasi, dan target aktual pada bagian Eksekusi Pemetaan Terakhir.</p>" +
       "</div></details>" +
-      "<div class=preset-grid>" + presetCatalog.map(function (preset) {
+      "<div class=preset-list>" + presetCatalog.map(function (preset) {
         var matches = validConfig && preset.rules.every(function (target) {
           return config.rules.some(function (rule) {
             return rule.match === target.match && rule.from === target.from && rule.to === target.to && rule.enabled;
@@ -819,21 +934,15 @@ function createG1MappingConfig(store) {
           });
         }
         var pairs = preset.rules.map(function (rule) {
-          var fromInfo = describeSku(rule.from);
-          var toInfo = describeSku(rule.to);
-          return "<div class=preset-pair>" +
-            "<div class=pair-head><span class=match-tag>" + (rule.match === "exact" ? "SKU Persis" : "Awalan SKU") + "</span>" +
-            tierBadge(rule.from) + "<span class=arrow aria-hidden=true>→</span>" + tierBadge(rule.to) + "</div>" +
-            "<div class=pair-flow><div class=pair-end><span class=pair-label>" + escape(fromInfo.label) + "</span><code>" + escape(rule.from) + "</code></div>" +
-            "<span class=pair-arrow aria-label=\"Diganti menjadi\">↓</span>" +
-            "<div class=pair-end><span class=pair-label>" + escape(toInfo.label) + "</span><code>" + escape(rule.to) + "</code></div></div></div>";
+          return "<div class=preset-pair><span class=sub-txt>" + (rule.match === "exact" ? "SKU Persis" : "Awalan SKU") +
+            "</span> <code>" + escape(rule.from) + "</code> <span aria-label=\"Diganti menjadi\">→</span> <code>" + escape(rule.to) + "</code></div>";
         }).join("");
         return "<form class=preset method=post action=\"" + ROOT + "\"><fieldset" +
           (!writable || !validConfig ? " disabled" : "") + "><legend>" + escape(preset.title) + "</legend>" +
           revisionInput() + "<input type=hidden name=preset value=\"" + escape(preset.id) + "\">" +
-          "<p class=note>" + escape(preset.description) + "</p>" + pairs +
-          (matches ? "<p class=preset-state>Aturan saat ini cocok</p>" : "") +
-          "<button class=primary type=submit name=action value=preset>Terapkan Templat</button></fieldset></form>";
+          "<p class=muted>" + escape(preset.description) + "</p>" + pairs +
+          (matches ? "<span class=\"tag t-ok\">Aturan saat ini cocok</span>" : "") +
+          "<button type=submit name=action value=preset>Terapkan Templat</button></fieldset></form>";
       }).join("") + "</div></section>";
   }
   function ruleForm(rule, isNew) {
@@ -842,92 +951,43 @@ function createG1MappingConfig(store) {
     var select = "<option value=exact" + (draft.match === "exact" ? " selected" : "") + ">SKU Persis (Exact)</option>" +
       "<option value=prefix" + (draft.match === "prefix" ? " selected" : "") + ">Awalan SKU (Prefix, akhiri dengan titik)</option>";
     if (draft.match !== "exact" && draft.match !== "prefix") select = "<option value=\"\" selected>Silakan pilih cara pencocokan</option>" + select;
-    var formHtml = "<form class=rule method=post action=\"" + ROOT + "\"" + (isNew ? " id=new-mapping" : "") + ">" +
-      "<fieldset" + (disabled ? " disabled" : "") + "><legend>" + (isNew ? "Tambah Pemetaan Baru" : "Edit Pemetaan") + "</legend>" +
+    return "<form class=rule method=post action=\"" + ROOT + "\"" + (isNew ? " id=new-mapping" : "") + ">" +
+      "<fieldset" + (disabled ? " disabled" : "") + "><legend>" + (isNew ? "Tambah Pemetaan Baru" : "Edit Aturan") + "</legend>" +
       revisionInput() + "<input type=hidden name=id value=\"" + escape(rule.id) + "\">" +
       "<div class=fields><label>Cara Pencocokan<select name=match required>" + select + "</select></label>" +
-      "<label class=check><input type=checkbox name=enabled value=1" + (draft.enabled ? " checked" : "") + ">Aktifkan aturan ini</label>" +
+      "<label class=check><input type=checkbox name=enabled value=1" + (draft.enabled ? " checked" : "") + ">Aktifkan aturan</label>" +
       "<label>SKU Asal<input name=from type=text list=sku-candidates required maxlength=178 pattern=\"(?:g1\\.|com\\.google\\.(?:one|gemini)\\.)[A-Za-z0-9._\\-]{1,160}\" autocomplete=off autocapitalize=none spellcheck=false value=\"" +
       escape(draft.from.slice(0, 300)) + "\" placeholder=\"g1.ios.ai.2tb.\"></label>" +
       "<label>SKU Tujuan<input name=to type=text list=sku-candidates required maxlength=178 pattern=\"(?:g1\\.|com\\.google\\.(?:one|gemini)\\.)[A-Za-z0-9._\\-]{0,159}[A-Za-z0-9_\\-]\" autocomplete=off autocapitalize=none spellcheck=false value=\"" +
-      escape(draft.to.slice(0, 300)) + "\" placeholder=\"g1.2tb.ai.12months_ip_90p\"></label></div>" +
+      escape(draft.to.slice(0, 300)) + "\" placeholder=\"com.google.gemini.2tb.ai.m.3month_ip_99p\"></label></div>" +
       "<div class=actions><button class=primary type=submit name=action value=upsert>" + (isNew ? "Tambah dan Simpan" : "Simpan Pemetaan Ini") + "</button>" +
       (isNew ? "" : "<button class=delete type=submit name=action value=delete formnovalidate>Hapus Pemetaan Ini</button>") + "</div></fieldset></form>";
-    if (isNew) {
-      var openNew = hasPrefill || orphanDraft || !config.rules.length ? " open" : "";
-      return "<details class=\"rule-drawer add-drawer\"" + openNew + "><summary>" +
-        "<span class=\"status-dot dot-add\"></span>" +
-        "<span class=summary-main><strong>+ Tambah Pemetaan Baru</strong>" +
-        "<span class=summary-sub>" + (hasPrefill ? "Form sudah terisi otomatis dari pilihan Anda — buka untuk memilih target &amp; simpan" : "Buat aturan manual berdasarkan SKU Persis atau Awalan (Prefix)") + "</span></span>" +
-        (hasPrefill ? "<span class=\"pill pill-accent\">Siap Simpan</span>" : "") +
-        "</summary><div class=rule-body>" + formHtml + "</div></details>";
-    }
-    var fromInfo = describeSku(draft.from);
-    var toInfo = describeSku(draft.to);
-    var openRule = formDraft && formDraft.id === rule.id ? " open" : "";
-    return "<details class=rule-drawer" + openRule + "><summary>" +
-      "<span class=\"status-dot " + (rule.enabled ? "dot-on" : "dot-off") + "\"></span>" +
-      "<span class=summary-main>" +
-      "<span class=summary-badges>" +
-      "<span class=\"pill " + (rule.enabled ? "pill-on" : "pill-off") + "\">" + (rule.enabled ? "Aktif" : "Nonaktif") + "</span>" +
-      "<span class=match-tag>" + (rule.match === "exact" ? "Persis" : "Awalan") + "</span>" +
-      tierBadge(rule.from) + "<span class=arrow aria-hidden=true>→</span>" + tierBadge(rule.to) +
-      "</span>" +
-      "<span class=summary-human>" + escape(fromInfo.label) + " → " + escape(toInfo.label) + "</span>" +
-      "<code class=summary-codes>" + escape(rule.from) + " → " + escape(rule.to) + "</code>" +
-      "</span>" +
-      "</summary><div class=rule-body>" + formHtml + "</div></details>";
-  }
-  function quickPrefixShortcuts() {
-    var shortcuts = [
-      { prefix: "g1.ios.ai.2tb.", to: "g1.2tb.ai.12months_ip_90p", title: "+ Awalan AI Pro 2TB (Bundel AI)", cls: "tier-ai-pro" },
-      { prefix: "g1.ios.helium.", to: "g1.2tb.ai.12months_ip_90p", title: "+ Awalan AI Plus (Helium)", cls: "tier-plus" },
-      { prefix: "g1.ios.2tb.", to: "g1.2tb.ai.12months_ip_90p", title: "+ Awalan Pro 2TB Standar", cls: "tier-pro" },
-      { prefix: "g1.ios.20tb.", to: "g1.ai.ultra.3months_ip_75p.acq", title: "+ Awalan Ultra 20TB", cls: "tier-ultra" }
-    ];
-    return "<div class=quick-bar><div class=quick-title>Isi Cepat Awalan Populer (1 Ketukan):</div><div class=quick-chips>" +
-      shortcuts.map(function (item) {
-        var alreadyActive = config.rules.some(function (rule) {
-          return rule.enabled && rule.match === "prefix" && rule.from === item.prefix;
-        });
-        return "<a class=\"chip-shortcut" + (alreadyActive ? " chip-done" : "") + "\" href=\"" + ROOT + "?from=" + escape(encodeURIComponent(item.prefix)) +
-          "&to=" + escape(encodeURIComponent(item.to)) + "#new-mapping\">" +
-          "<span class=\"tier " + item.cls + "\">" + escape(alreadyActive ? "Terpasang" : "Tambah") + "</span>" +
-          "<span>" + escape(item.title) + "</span><code>" + escape(item.prefix) + "</code></a>";
-      }).join("") + "</div></div>";
   }
   function mappingEditor() {
-    var parts = ["<section id=mapping-editor class=panel>",
-      "<div class=section-head><div><span class=eyebrow>Langkah 2 · Daftar Aturan Aktif</span><h2>Pengelolaan Pemetaan</h2></div>" +
-      "<div class=section-stat><strong>Saat ini aktif " + enabledCount + " aturan / total " + config.rules.length + " aturan</strong> · Maks " + engine.limit + "</div></div>",
-      "<p class=lead-note>Ketuk baris aturan di bawah untuk membuka editor, ubah status aktif, atau hapus aturan. Waktu simpan (UTC): <code>" + escape(config.updatedAt || "Sedang menggunakan nilai bawaan internal, belum pernah disimpan manual") + "</code></p>"];
+    var parts = ["<section id=mapping-editor class=inner-sec><h2>Pengelolaan Pemetaan</h2>",
+      "<p class=muted>Setelah mengubah SKU asal, SKU tujuan, atau status aktivasi, klik tombol simpan pada baris tersebut. Waktu simpan (UTC): " + escape(config.updatedAt || "Sedang menggunakan nilai bawaan internal, belum pernah disimpan manual") + "</p>",
+      "<p><strong>Saat ini aktif " + enabledCount + " aturan / total " + config.rules.length + " aturan</strong>, maksimal " + engine.limit + " aturan.</p>"];
     if (!validConfig) parts.push("<p class=error role=alert>" + escape(config.error) + "</p>");
-    else if (applied) parts.push("<p class=success>Eksekusi pemetaan terakhir telah membaca konfigurasi saat ini; menulis ulang " + report.test.hitCount + " kali pada sesi tersebut.</p>");
-    else parts.push("<p class=note-banner>Menunggu respons halaman paket berikutnya membaca konfigurasi saat ini; setelah menyimpan, buka ulang halaman paket di Google App lalu segarkan halaman ini untuk memeriksa.</p>");
+    else if (applied) parts.push("<p class=ok-box>Eksekusi pemetaan terakhir telah membaca konfigurasi saat ini; menulis ulang " + report.test.hitCount + " kali pada sesi tersebut.</p>");
+    else parts.push("<p class=warn-box>Menunggu respons halaman paket berikutnya membaca konfigurasi saat ini; setelah menyimpan, buka ulang halaman paket di Google App lalu segarkan halaman ini untuk memeriksa.</p>");
     if (report.test.version && report.test.version !== COLLECTOR_VERSION) {
-      parts.push("<p class=note-banner>Catatan eksekusi terakhir berasal dari <code>" + escape(report.test.version) +
+      parts.push("<p class=warn-box>Catatan eksekusi terakhir berasal dari <code>" + escape(report.test.version) +
         "</code>, sedangkan skrip respons versi ini adalah <code>" + escape(COLLECTOR_VERSION) +
         "</code>. Catatan lama tetap dipertahankan; jika versi eksekusi belum berubah setelah membuka ulang halaman paket, matikan modul lama lalu muat ulang skrip versi ini.</p>");
     }
-    if (validConfig && enabledCount === 0) parts.push("<p class=note-banner>Saat ini tidak ada aturan yang aktif: pengumpulan tetap berjalan, isi respons dibiarkan asli.</p>");
+    if (validConfig && enabledCount === 0) parts.push("<p class=muted>Saat ini tidak ada aturan yang aktif: pengumpulan tetap berjalan, isi respons dibiarkan asli.</p>");
     if (!writable) parts.push("<p class=error>Penyimpanan pemetaan lokal belum siap, tombol edit dinonaktifkan sementara.</p>");
-    parts.push(quickPrefixShortcuts());
-    parts.push("<details class=info-drawer><summary>Petunjuk prioritas pencocokan (Exact vs Prefix)</summary><div class=drawer-body>" +
-      "<p>Setelah mengubah SKU asal, SKU tujuan, atau status aktivasi, klik tombol simpan pada baris tersebut.</p>" +
-      "<p class=note>SKU persis (exact) diprioritaskan; aturan awalan (prefix) memilih awalan terpanjang dan wajib diakhiri titik. Aturan nonaktif tidak ikut dicocokkan; setiap ID asal hanya diganti satu kali, target tidak dicocokkan ulang secara berantai.</p>" +
-      "</div></details>");
+    parts.push("<p class=muted>SKU persis (exact) diprioritaskan; aturan awalan (prefix) memilih awalan terpanjang dan wajib diakhiri titik. Aturan nonaktif tidak ikut dicocokkan; setiap ID asal hanya diganti satu kali, target tidak dicocokkan ulang secara berantai.</p>");
     parts.push("<datalist id=sku-candidates>" + Object.keys(candidates).sort().map(function (id) {
       return "<option value=\"" + escape(id) + "\"></option>";
     }).join("") + "</datalist>");
-    parts.push("<div class=rule-list>");
     config.rules.forEach(function (rule) { parts.push(ruleForm(rule, false)); });
-    parts.push("</div>");
-    if (orphanDraft) parts.push("<p class=note-banner>Hasil penyimpanan isian sebelumnya belum terkonfirmasi, isi dipertahankan di kotak tambah baru; segarkan untuk memeriksa aturan saat ini sebelum menyimpan ulang.</p>");
+    if (orphanDraft) parts.push("<p class=warn-box>Hasil penyimpanan isian sebelumnya belum terkonfirmasi, isi dipertahankan di kotak tambah baru; segarkan untuk memeriksa aturan saat ini sebelum menyimpan ulang.</p>");
     parts.push(ruleForm(newRule, true));
-    if (config.rules.length >= engine.limit) parts.push("<p class=note-banner>Batas maksimal aturan telah tercapai, hapus salah satu aturan untuk menambah yang baru.</p>");
-    parts.push("<div class=editor-footer><form class=reset method=post action=\"" + ROOT + "\">" + revisionInput() +
-      "<button type=submit name=action value=reset" + (!writable ? " disabled" : "") + ">Pulihkan Pemetaan Bawaan</button></form>" +
-      "<p class=note>Pulihkan bawaan akan mengganti aturan saat ini menjadi tiga aturan internal (2TB 12 bulan 90p, 20TB / 30TB 3 bulan 75p); riwayat pengumpulan dan eksekusi tetap disimpan.</p></div></section>");
+    if (config.rules.length >= engine.limit) parts.push("<p class=muted>Batas maksimal aturan telah tercapai, hapus salah satu aturan untuk menambah yang baru.</p>");
+    parts.push("<form class=reset method=post action=\"" + ROOT + "\">" + revisionInput() +
+      "<button type=submit name=action value=reset" + (!writable ? " disabled" : "") + ">Pulihkan Pemetaan Bawaan</button></form>",
+      "<p class=muted>Pulihkan bawaan akan mengganti aturan saat ini menjadi tiga aturan internal (2TB 12 bulan 90p, 20TB / 30TB 3 bulan 75p); riwayat pengumpulan dan eksekusi tetap disimpan.</p></section>");
     return parts.join("");
   }
   var latestScan = report.scan.recentResponses.length ?
@@ -949,204 +1009,162 @@ function createG1MappingConfig(store) {
   if (report.test.version === "pro-annual-test-v1" && report.test.status === "no-match") {
     status = "Catatan v1 lama: respons kali ini tidak mengenai awalan iOS 2TB";
   }
-  var executionOpen = report.test.hitCount > 0 || report.test.status === "config-error" ? " open" : "";
+  var editorOpen = hasPrefill || orphanDraft || formDraft || !validConfig || !writable ? " open" : "";
+  var execOpen = report.test.status === "config-error" ? " open" : "";
   var css = [
-    ":root{--bg:#0b0f17;--surface:#121926;--surface-2:#172030;--surface-3:#1e293d;--border:#243249;--border-hi:#354866;--text:#eef2f8;--muted:#94a3b8;--accent:#3b82f6;--accent-soft:rgba(59,130,246,.14);--emerald:#10b981;--emerald-soft:rgba(16,185,129,.14);--amber:#f59e0b;--amber-soft:rgba(245,158,11,.14);--rose:#ef4444;--rose-soft:rgba(239,68,68,.14);--violet:#8b5cf6;--violet-soft:rgba(139,92,246,.16);--cyan:#06b6d4;--cyan-soft:rgba(6,182,212,.14);--radius:14px;--radius-sm:9px}",
     "*{box-sizing:border-box}",
     "html{color-scheme:dark}",
-    "body{margin:0;padding:24px 16px 48px;font:15px/1.55 -apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"Segoe UI\",sans-serif;color:var(--text);background:var(--bg);background-image:radial-gradient(ellipse 80% 45% at 50% -10%,rgba(59,130,246,.14),transparent)}",
-    ".shell{max-width:980px;margin:0 auto}",
-    "h1{font-size:24px;line-height:1.25;letter-spacing:-.02em;margin:6px 0 8px}",
-    "h2{font-size:18px;line-height:1.3;letter-spacing:-.01em;margin:0}",
-    "h3{font-size:15px;margin:16px 0 10px;color:var(--text)}",
-    "p{margin:8px 0}",
-    "code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;background:rgba(15,23,42,.75);border:1px solid var(--border);padding:2px 6px;border-radius:6px;color:#cbd5e1;overflow-wrap:anywhere}",
+    "body{margin:0;padding:18px 14px 44px;font:14px/1.5 -apple-system,BlinkMacSystemFont,\"SF Pro Text\",sans-serif;color:#ececf1;background:#0a0a0c}",
+    ".wrap{max-width:860px;margin:0 auto}",
+    "h1{font-size:20px;font-weight:700;margin:0;letter-spacing:-.01em}",
+    "h2{font-size:15px;font-weight:600;margin:0}",
+    "h3{font-size:13.5px;font-weight:600;margin:14px 0 6px}",
+    "p{margin:6px 0}",
+    "code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#d4d4d8;background:#18181d;border:1px solid #27272e;padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}",
     "a{color:#60a5fa;text-decoration:none}",
     "a:hover{text-decoration:underline}",
-    ".hero{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:20px;margin-bottom:16px;box-shadow:0 12px 32px rgba(0,0,0,.28)}",
-    ".hero-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}",
-    ".badge{display:inline-flex;align-items:center;gap:6px;background:var(--emerald-soft);color:#6ee7b7;border:1px solid rgba(16,185,129,.28);padding:5px 11px;border-radius:999px;font-size:12.5px;font-weight:600;margin:0 0 8px}",
-    ".entry-mode{color:var(--muted);font-size:13.5px;margin:4px 0 0}",
-    ".actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}",
-    ".actions form{margin:0}",
-    "button,.actions a,.chip-btn{font:inherit;font-weight:600;font-size:13.5px;padding:9px 14px;border:1px solid var(--border-hi);border-radius:var(--radius-sm);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;background:var(--surface-2);color:var(--text);transition:background .15s ease,border-color .15s ease}",
-    "button:hover,.actions a:hover,.chip-btn:hover{background:var(--surface-3);border-color:#4b648a;text-decoration:none}",
-    ".primary{background:var(--accent);border-color:#2563eb;color:#fff}",
-    ".primary:hover{background:#2563eb;border-color:#1d4ed8}",
-    ".delete{background:var(--rose-soft);border-color:rgba(239,68,68,.35);color:#fca5a5}",
-    ".delete:hover{background:rgba(239,68,68,.24);border-color:rgba(239,68,68,.55)}",
-    ".kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:16px}",
-    ".kpi{background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:12px 14px}",
-    ".kpi-label{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:block}",
-    ".kpi-val{font-size:18px;font-weight:700;margin-top:4px;display:block;color:var(--text)}",
-    ".kpi-ok .kpi-val{color:#6ee7b7}",
-    ".kpi-warn .kpi-val{color:#fcd34d}",
-    ".kpi-err .kpi-val{color:#fca5a5}",
-    ".panel,.section-drawer{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin:16px 0}",
-    ".section-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:8px}",
-    ".eyebrow{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#60a5fa;margin-bottom:3px}",
-    ".section-stat{font-size:13px;color:var(--muted);background:var(--surface-2);border:1px solid var(--border);padding:5px 10px;border-radius:999px}",
-    ".lead-note{color:var(--muted);font-size:13.5px;margin:4px 0 12px}",
-    ".note{color:var(--muted);font-size:13.5px}",
-    ".success{background:var(--emerald-soft);color:#6ee7b7;border:1px solid rgba(16,185,129,.3);padding:11px 14px;border-radius:var(--radius-sm);font-size:14px}",
-    ".error{background:var(--rose-soft);color:#fca5a5;border:1px solid rgba(239,68,68,.35);padding:11px 14px;border-radius:var(--radius-sm);font-size:14px;overflow-wrap:anywhere}",
-    ".note-banner{background:var(--amber-soft);color:#fde68a;border:1px solid rgba(245,158,11,.28);padding:10px 14px;border-radius:var(--radius-sm);font-size:13.5px}",
-    ".info-drawer{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);margin:10px 0 14px}",
-    ".info-drawer summary{cursor:pointer;list-style:none;padding:9px 13px;font-size:13px;font-weight:600;color:var(--muted);display:flex;align-items:center;justify-content:space-between;gap:8px}",
-    ".info-drawer summary::-webkit-details-marker{display:none}",
-    ".info-drawer summary::after{content:\"▾\";font-size:12px;opacity:.8;transition:transform .16s ease}",
-    ".info-drawer[open] summary::after{transform:rotate(180deg)}",
-    ".drawer-body{padding:0 13px 12px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)}",
-    ".preset-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:12px}",
-    ".preset{min-width:0;margin:0}",
-    "fieldset{min-width:0;margin:0;border:1px solid var(--border);border-radius:12px;padding:14px;background:var(--surface-2)}",
-    ".preset fieldset{height:100%;display:flex;flex-direction:column}",
-    "legend{font-weight:700;font-size:14.5px;padding:0 6px;color:var(--text);max-width:100%}",
-    ".preset .note{font-size:13px;margin:4px 0 10px}",
-    ".preset-pair{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;margin:0 0 10px}",
-    ".pair-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px}",
-    ".pair-flow{display:flex;flex-direction:column;gap:5px}",
-    ".pair-end{display:flex;flex-direction:column;gap:3px}",
-    ".pair-label{font-size:12px;color:var(--text);font-weight:600}",
-    ".pair-arrow{font-size:12px;color:var(--muted);padding-left:4px}",
-    ".preset-state{align-self:flex-start;font-size:12px;font-weight:600;padding:4px 10px;margin:0 0 10px;background:var(--emerald-soft);color:#6ee7b7;border:1px solid rgba(16,185,129,.3);border-radius:999px}",
-    ".preset button{width:100%;margin-top:auto}",
-    ".tier{display:inline-flex;align-items:center;font-size:11px;font-weight:700;letter-spacing:.02em;padding:2px 8px;border-radius:999px;border:1px solid transparent;white-space:nowrap}",
-    ".tier-pro{background:var(--accent-soft);color:#93c5fd;border-color:rgba(59,130,246,.32)}",
-    ".tier-ai-pro{background:var(--violet-soft);color:#c4b5fd;border-color:rgba(139,92,246,.35)}",
-    ".tier-plus{background:var(--cyan-soft);color:#67e8f9;border-color:rgba(6,182,212,.32)}",
-    ".tier-ultra{background:var(--amber-soft);color:#fcd34d;border-color:rgba(245,158,11,.35)}",
-    ".tier-turki{background:var(--rose-soft);color:#fda4af;border-color:rgba(244,63,94,.32)}",
-    ".tier-target{background:var(--emerald-soft);color:#6ee7b7;border-color:rgba(16,185,129,.35)}",
-    ".tier-basic,.tier-neutral{background:rgba(148,163,184,.14);color:#cbd5e1;border-color:rgba(148,163,184,.28)}",
-    ".match-tag{font-size:11px;font-weight:700;color:var(--muted);background:var(--surface-3);border:1px solid var(--border);padding:2px 7px;border-radius:6px}",
-    ".arrow{color:var(--muted);font-size:13px}",
-    ".quick-bar{background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:12px;margin:12px 0}",
-    ".quick-title{font-size:12.5px;font-weight:700;color:var(--text);margin-bottom:8px}",
-    ".quick-chips{display:flex;flex-wrap:wrap;gap:8px}",
-    ".chip-shortcut{display:inline-flex;align-items:center;gap:7px;flex-wrap:wrap;padding:7px 10px;border-radius:9px;background:var(--surface);border:1px solid var(--border-hi);color:var(--text);font-size:12.5px;font-weight:600;text-decoration:none}",
-    ".chip-shortcut:hover{background:var(--surface-3);border-color:var(--accent);text-decoration:none}",
-    ".chip-done{opacity:.78}",
-    ".rule-list{display:flex;flex-direction:column;gap:10px;margin:12px 0}",
-    ".rule-drawer{background:var(--surface-2);border:1px solid var(--border);border-radius:12px;overflow:hidden}",
-    ".rule-drawer[open]{border-color:var(--border-hi)}",
-    ".add-drawer{border-style:dashed;border-color:rgba(59,130,246,.45);margin-top:12px}",
-    ".rule-drawer>summary{cursor:pointer;list-style:none;padding:12px 14px;display:flex;align-items:center;gap:12px}",
-    ".rule-drawer>summary::-webkit-details-marker{display:none}",
-    ".rule-drawer>summary::after{content:\"▾\";margin-left:auto;color:var(--muted);font-size:14px;flex-shrink:0;transition:transform .16s ease}",
-    ".rule-drawer[open]>summary::after{transform:rotate(180deg)}",
-    ".status-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}",
-    ".dot-on{background:var(--emerald);box-shadow:0 0 0 4px var(--emerald-soft)}",
-    ".dot-off{background:#64748b;box-shadow:0 0 0 4px rgba(100,116,139,.18)}",
-    ".dot-add{background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}",
-    ".summary-main{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}",
-    ".summary-badges{display:flex;align-items:center;gap:6px;flex-wrap:wrap}",
-    ".summary-human{font-size:13.5px;font-weight:600;color:var(--text)}",
-    ".summary-sub{font-size:12.5px;color:var(--muted)}",
-    ".summary-codes{font-size:12px;color:var(--muted);background:transparent;border:0;padding:0}",
-    ".pill{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px}",
-    ".pill-on{background:var(--emerald-soft);color:#6ee7b7}",
-    ".pill-off{background:rgba(148,163,184,.16);color:#94a3b8}",
-    ".pill-accent{background:var(--accent-soft);color:#93c5fd;margin-left:6px}",
-    ".rule-body{padding:14px;border-top:1px solid var(--border);background:var(--surface)}",
-    ".rule{margin:0}",
-    ".fields{display:grid;grid-template-columns:1fr 1fr;gap:14px}",
-    ".fields label{font-weight:600;font-size:13px;color:var(--muted);min-width:0;display:block}",
-    "input[type=text],select{font:15px/1.4 -apple-system,BlinkMacSystemFont,sans-serif;width:100%;padding:10px 12px;margin-top:6px;border:1px solid var(--border-hi);border-radius:8px;background:var(--bg);color:var(--text)}",
-    "input[type=text]{font-family:ui-monospace,SFMono-Regular,monospace;font-size:13.5px}",
-    ".check{display:flex!important;align-items:center;gap:10px;align-self:end;min-height:44px;color:var(--text)!important;padding:0 4px}",
-    ".check input{width:18px;height:18px;accent-color:var(--accent)}",
-    ".rule .actions{margin:14px 0 0}",
-    ".editor-footer{margin-top:16px;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}",
-    ".reset{margin:0}",
-    ".section-drawer{padding:0;overflow:hidden}",
-    ".section-drawer>summary{cursor:pointer;list-style:none;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}",
-    ".section-drawer>summary::-webkit-details-marker{display:none}",
-    ".drawer-title{display:flex;flex-direction:column;gap:3px}",
-    ".drawer-sub{font-size:12.5px;color:var(--muted);font-weight:400}",
-    ".drawer-right{display:flex;align-items:center;gap:10px;margin-left:auto}",
-    ".drawer-chev{font-size:13px;color:var(--muted);transition:transform .16s ease}",
-    ".section-drawer[open] .drawer-chev{transform:rotate(180deg)}",
-    ".section-drawer-body{padding:0 18px 18px;border-top:1px solid var(--border)}",
-    ".section-drawer-body section{border:0;padding:14px 0 0;margin:0;background:transparent}",
-    ".stat-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:12px 0}",
-    ".stat-box{background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:13px}",
-    ".stat-box strong{display:block;font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}",
-    ".scroll{overflow:auto;border:1px solid var(--border);border-radius:10px;margin:10px 0}",
-    "table{border-collapse:collapse;width:100%;font-size:13.5px}",
-    "th{background:var(--surface-2);color:var(--muted);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}",
-    "td,th{padding:10px 12px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}",
+    ".head{padding-bottom:14px;border-bottom:1px solid #232329;margin-bottom:16px}",
+    ".head-meta{color:#9ca3af;font-size:12.5px;margin-top:4px}",
+    ".toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}",
+    ".toolbar form{margin:0}",
+    "button,.toolbar a,.btn-sm{font:inherit;font-size:13px;font-weight:600;padding:8px 12px;border:1px solid #2e2e36;border-radius:7px;background:#16161b;color:#ececf1;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}",
+    "button:hover,.toolbar a:hover,.btn-sm:hover{background:#1f1f27;border-color:#3f3f49;text-decoration:none}",
+    ".primary{background:#2563eb;border-color:#2563eb;color:#fff}",
+    ".primary:hover{background:#1d4ed8;border-color:#1d4ed8}",
+    ".delete{background:#2c1517;border-color:#5c2327;color:#fca5a5}",
+    ".card{background:#121216;border:1px solid #232329;border-radius:10px;padding:16px;margin:14px 0}",
+    ".card-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}",
+    ".meta{font-size:12.5px;color:#9ca3af}",
+    ".muted{color:#9ca3af;font-size:12.5px}",
+    ".sub-txt{font-size:11.5px;color:#9ca3af;margin-bottom:3px}",
+    ".tag{display:inline-block;font-size:11px;font-weight:600;padding:1px 7px;border-radius:4px;border:1px solid #2e2e36;background:#18181d;color:#d4d4d8}",
+    ".t-ok{background:#0f2419;border-color:#1f4d35;color:#4ade80}",
+    ".t-warn{background:#261d0d;border-color:#4d3812;color:#fbbf24}",
+    ".t-hi{background:#152033;border-color:#233a61;color:#93c5fd}",
+    ".t-dim{color:#9ca3af}",
+    ".ok-box{background:#0f2419;border:1px solid #1f4d35;color:#86efac;padding:10px 12px;border-radius:7px;font-size:13px;margin:10px 0}",
+    ".warn-box{background:#241c0d;border:1px solid #4a3714;color:#fde68a;padding:10px 12px;border-radius:7px;font-size:13px;margin:10px 0}",
+    ".error{background:#2c1517;border:1px solid #5c2327;color:#fca5a5;padding:10px 12px;border-radius:7px;font-size:13px;overflow-wrap:anywhere;margin:10px 0}",
+    ".scroll{overflow:auto;border:1px solid #232329;border-radius:7px;margin:10px 0}",
+    "table{border-collapse:collapse;width:100%;font-size:12.5px}",
+    "th{background:#16161b;color:#9ca3af;font-weight:600;font-size:11.5px;text-align:left;padding:8px 10px;border-bottom:1px solid #232329}",
+    "td{padding:9px 10px;border-bottom:1px solid #1d1d22;vertical-align:top;text-align:left}",
     "tr:last-child td{border-bottom:0}",
-    ".sku-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px}",
-    ".sku-desc{font-size:12px;color:var(--muted);font-weight:500}",
-    ".num{font-variant-numeric:tabular-nums;font-weight:700}",
-    ".mono-time{font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px;color:var(--muted);white-space:nowrap}",
-    ".empty-state{color:var(--muted);font-style:italic;padding:10px 0}",
-    ".maintenance-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin-top:18px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}",
-    "button:disabled,fieldset:disabled{opacity:.5}",
-    "button:disabled{cursor:default}",
-    "a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}",
-    "@media(prefers-reduced-motion:reduce){*{transition:none!important}}",
-    "@media(max-width:680px){body{padding:14px 10px 36px}.hero,.panel{padding:14px}.kpi-grid{grid-template-columns:repeat(2,1fr)}.fields,.preset-grid{grid-template-columns:1fr}.actions{width:100%}.actions form,.actions a{flex:1}.editor-footer,.maintenance-card{flex-direction:column;align-items:stretch}}"
+    ".num{font-variant-numeric:tabular-nums;font-weight:600}",
+    ".mono-t{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:#9ca3af;white-space:nowrap}",
+    ".ctx-cell code{display:block;max-width:340px;font-size:11px;line-height:1.4}",
+    ".qf-bar{margin-top:12px;padding-top:12px;border-top:1px solid #232329}",
+    ".qf-label{display:block;font-size:12px;color:#d4d4d8;font-weight:600;margin-bottom:8px}",
+    ".qf-forms{display:flex;gap:8px;flex-wrap:wrap}",
+    ".preset-list{display:flex;flex-direction:column;gap:8px;margin-top:10px}",
+    ".preset{margin:0}",
+    "fieldset{min-width:0;margin:0;border:1px solid #232329;border-radius:8px;padding:12px;background:#16161b}",
+    "legend{font-weight:600;font-size:13.5px;padding:0 5px;color:#ececf1}",
+    ".preset-pair{margin:6px 0 8px;font-size:12px}",
+    ".preset fieldset>button{margin-top:6px}",
+    ".acc,.sub-drawer{background:#121216;border:1px solid #232329;border-radius:10px;margin:10px 0}",
+    ".sub-drawer{background:#16161b}",
+    ".acc>summary,.sub-drawer>summary{cursor:pointer;list-style:none;padding:12px 16px;font-size:13.5px;font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:10px}",
+    ".acc>summary::-webkit-details-marker,.sub-drawer>summary::-webkit-details-marker{display:none}",
+    ".acc>summary::after,.sub-drawer>summary::after{content:\"▾\";color:#9ca3af;font-size:12px}",
+    ".acc[open]>summary::after,.sub-drawer[open]>summary::after{content:\"▴\"}",
+    ".acc-body,.sub-drawer-body{padding:12px 16px 16px;border-top:1px solid #232329}",
+    ".inner-sec{margin:0;padding:0}",
+    ".rule{margin:12px 0}",
+    ".fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}",
+    ".fields label{font-size:12px;font-weight:600;color:#9ca3af;display:block;min-width:0}",
+    "input[type=text],select{font:13.5px/1.4 -apple-system,BlinkMacSystemFont,sans-serif;width:100%;padding:8px 10px;margin-top:4px;border:1px solid #2e2e36;border-radius:6px;background:#0a0a0c;color:#ececf1}",
+    "input[type=text]{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}",
+    ".check{display:flex!important;align-items:center;gap:8px;align-self:end;min-height:38px;color:#ececf1!important}",
+    ".check input{width:16px;height:16px}",
+    ".actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}",
+    ".reset{margin-top:12px}",
+    "button:disabled,fieldset:disabled{opacity:.45;cursor:default}",
+    "@media(max-width:640px){body{padding:14px 10px 36px}.fields{grid-template-columns:1fr}.toolbar,.qf-forms{flex-direction:column}.toolbar button,.toolbar a,.qf-forms button{width:100%}}"
   ].join("");
-  var html = [
-    "<!doctype html><html lang=id><meta charset=utf-8>",
-    "<meta name=viewport content=\"width=device-width,initial-scale=1\"><title>Pengelolaan SKU Google One</title>",
-    "<style>" + css + "</style>",
-    "<main class=shell>",
-    "<header class=hero>",
-    "<div class=hero-top>",
-    "<div><p class=badge>Skrip lokal telah mengambil alih · " + VERSION + "</p>",
-    "<h1>Pengelolaan SKU Google One</h1>",
-    "<p class=entry-mode><strong>Entri laporan saat ini: " + modeName(report.configuredMode) + "</strong></p></div>",
-    "<nav class=actions aria-label=\"Operasi laporan\"><form method=get action=\"" + ROOT + "\"><button type=submit name=format value=json>Ekspor JSON</button></form><a href=\"" + ROOT + "\">Segarkan Laporan</a></nav>",
-    "</div>",
-    "<div class=kpi-grid>",
-    "<div class=\"kpi " + (!validConfig ? "kpi-err" : applied ? "kpi-ok" : "kpi-warn") + "\"><span class=kpi-label>Status Eksekusi</span><span class=kpi-val>" + (!validConfig ? "Error Konfig" : applied ? "Sinkron Aktif" : "Menunggu Paket") + "</span></div>",
-    "<div class=kpi><span class=kpi-label>Aturan Aktif</span><span class=kpi-val>" + enabledCount + " / " + config.rules.length + "</span></div>",
-    "<div class=kpi><span class=kpi-label>Total Penggantian</span><span class=kpi-val>" + report.test.hitCount + "x</span></div>",
-    "<div class=kpi><span class=kpi-label>Kandidat SKU</span><span class=kpi-val>" + report.scan.skus.length + " ID</span></div>",
-    "</div>",
-    "<details class=info-drawer><summary>Informasi modul &amp; cara kerja di perangkat</summary><div class=drawer-body>",
-    "<p>Halaman ini dibuat secara lokal oleh Shadowrocket di perangkat ini; bilah alamat tetap memakai one.google.com, sementara konfigurasi pemetaan dan catatan pengumpulan disimpan di perangkat ini.</p>",
-    "<p>Cukup aktifkan satu modul G1 ACQ saja: kumpulkan ID dari respons asli terlebih dahulu, lalu tulis ulang sesuai aturan yang tersimpan.</p>",
-    "</div></details>",
-    "</header>",
-    actionError ? "<p class=error role=alert>" + escape(actionError) + "</p>" : "",
-    noticeText ? "<p class=success role=status>" + escape(noticeText) + "</p>" : "",
-    clearMessage ? "<p class=success>" + escape(clearMessage) + "</p>" : "",
-    storageAvailable ? "" : "<p class=error>Antarmuka penyimpanan lokal belum siap; halaman ini belum dapat membaca catatan pengumpulan.</p>",
-    presetTemplates(), mappingEditor(),
-    "<details class=section-drawer" + executionOpen + "><summary><span class=drawer-title><span class=eyebrow>Langkah 3 · Verifikasi Hasil</span><h2>Eksekusi Pemetaan Terakhir</h2><span class=drawer-sub>Lihat SKU apa yang benar-benar berhasil ditulis ulang oleh skrip</span></span><span class=drawer-right><span class=\"pill " + (report.test.hitCount > 0 ? "pill-on" : "pill-off") + "\">" + report.test.hitCount + " Penggantian</span><span class=drawer-chev>▾</span></span></summary><div class=section-drawer-body><section>",
-    "<p>Target awalan 2TB yang dikonfigurasi saat ini: <code>" + escape(report.configuredTarget || "Aturan awalan 2TB terpadu tidak aktif") + "</code></p>",
-    "<div class=stat-strip>",
-    "<div class=stat-box><strong>Versi &amp; Mode</strong>" + escape(report.test.version || "Belum ada") + " · " + modeName(report.test.mode) + "</div>",
-    "<div class=stat-box><strong>Status Eksekusi</strong>" + escape(status) + "</div>",
-    "<div class=stat-box><strong>Ringkasan Hitungan</strong>Total penggantian: " + report.test.hitCount + "; Termasuk 2TB: " + report.test.annualHitCount + "</div>",
-    "<div class=stat-box><strong>Waktu Eksekusi (UTC)</strong>" + escape(report.test.updatedAt || "Belum ada") + "</div>",
-    "</div>",
-    "<p>Versi: " + escape(report.test.version || "Belum ada") + "<br>Mode pemetaan aktual: " + modeName(report.test.mode) + "<br>Status: " + escape(status) + "; Total penggantian: " + report.test.hitCount + "; Termasuk 2TB: " + report.test.annualHitCount + "</p>",
-    "<p>Awalan asal 2TB: <code>g1.ios.2tb.</code><br>Target 2TB pada catatan kali ini: <code>" + escape(report.test.target || "Belum tercatat") + "</code><br>" + configuredOffers + " Tabel di bawah tetap mempertahankan target aktual dan status cadangan saat eksekusi tersebut; cadangan 75p / 90p lama ditampilkan sesuai catatan asli.<br>Waktu penyimpanan konfigurasi yang dipakai (UTC): " + escape(report.test.mappingUpdatedAt || "Bawaan internal atau belum tercatat pada versi lama") + "<br>Waktu eksekusi (UTC): " + escape(report.test.updatedAt || "Belum ada") + "</p>",
-    "<p class=note>Aturan persis (exact) dapat menimpa masing-masing ID 2TB secara individual; target aktual per baris ada di tabel bawah. Nama produk, harga, dan siklus penagihan aktual silakan cek di panel pembelian App Store.</p>",
-    table(report.test.matchedFrom, false), "</section></div></details>",
-    "<details class=section-drawer><summary><span class=drawer-title><span class=eyebrow>Katalog Perangkat</span><h2>Kandidat SKU yang Dikumpulkan Saat Menjelajah Halaman</h2><span class=drawer-sub>Daftar ID mentah dari Google One sebelum ditulis ulang — ketuk Jadikan SKU Asal untuk memetakan</span></span><span class=drawer-right><span class=\"pill pill-accent\">" + report.scan.skus.length + " ID Unik</span><span class=drawer-chev>▾</span></span></summary><div class=section-drawer-body><section>",
-    "<p>Total ID kumulatif: " + report.scan.skus.length + "; ID yang sama digabung hitungannya, rincian ID baru dan duplikat per respons dapat dilihat pada log pengumpulan di bawah.</p>",
-    "<p class=note>ID diekstrak dari respons asli sebelum penulisan ulang dan bukan merupakan katalog lengkap toko; target pengganti yang dihasilkan skrip tidak otomatis masuk ke daftar ini.</p>",
-    report.scan.truncated ? "<p class=note-banner>Catatan telah mencapai batas 300 ID; kosongkan catatan jika ingin mengumpulkan ulang dari halaman target.</p>" : "",
-    table(report.scan.skus, true),
-    "<p class=note>Waktu pembaruan (UTC): " + escape(report.scan.updatedAt || "Belum ada") + "</p></section></div></details>",
-    "<details class=section-drawer><summary><span class=drawer-title><span class=eyebrow>Log &amp; Diagnostik (Disembunyikan agar Rapi)</span><h2>Catatan Eksekusi Pengumpulan &amp; 10 Respons Terakhir</h2><span class=drawer-sub>Rincian pemindaian paket mentah untuk troubleshooting modul Shadowrocket</span></span><span class=drawer-right><span class=\"pill pill-off\">" + report.scan.recentResponses.length + " Log</span><span class=drawer-chev>▾</span></span></summary><div class=section-drawer-body><section>",
-    "<p>Skrip pengumpul aktual: <code>" + escape(report.scan.version || "Belum ada catatan") + "</code><br>Mode pengumpulan aktual: " + modeName(report.scan.mode) + "<br>" + scanVersionStatus + "</p>",
-    "<p>Respons teks dipindai: " + report.scan.scannedResponses + "; Respons non-teks dicatat: " + report.scan.nonTextResponses +
-      "; Respons berisi ID produk: " + report.scan.matchedResponses + "; Total ID unik: " + report.scan.skus.length + "</p>",
-    "<p>Waktu penyimpanan terakhir (UTC): " + escape(report.scan.updatedAt || "Belum ada") + "</p>",
-    latestScan ? "<p><strong>Terbaru: " + scanStatuses[latestScan.status] + "</strong><br>Terdeteksi " +
-      latestScan.candidateCount + " ID berbeda, baru dicatat " + latestScan.addedCount + ", di luar kapasitas " + latestScan.omittedCount + ".</p>" : "",
-    "<p class=note>Daftar kumulatif dideduplikasi per ID; ID yang sama akan menambah jumlah kemunculan sementara panjang daftar tetap. Catat jumlah dan waktunya, buka ulang halaman paket Google App, lalu segarkan laporan ini untuk membandingkan.</p>",
-    "<h3>10 Respons Terakhir</h3>", recentTable(report.scan.recentResponses),
-    "<p class=note>Jika jumlah bertambah dan status menunjukkan ID duplikat, artinya respons sudah diterima; jika waktu dan jumlah tidak berubah, belum ada respons baru yang cocok — periksa cache halaman, sakelar modul, dekripsi HTTPS, domain permintaan, dan log skrip untuk saved=no. Hanya kategori path yang disimpan.</p></section></div></details>",
-    "<footer class=maintenance-card><div><p class=note>Mengosongkan catatan tetap mempertahankan konfigurasi pemetaan; setelah melihat paket, segarkan halaman ini untuk melihat catatan baru, dan biarkan pemindai terpisah maupun salinan penulisan ulang lama tetap nonaktif.</p></div><form method=get action=\"" + ROOT + "\"><button name=clear value=1>Kosongkan Catatan Pengumpulan dan Uji Coba Alat Ini</button></form></footer>",
-    "</main></html>"
-  ].join("");
-  $done({ response: { status: responseStatus, headers: headers, body: html } });
+  function renderHtml(extraNotice, extraError) {
+    var finalError = extraError || actionError;
+    var finalNotice = extraNotice || noticeText;
+    return [
+      "<!doctype html><html lang=id><meta charset=utf-8>",
+      "<meta name=viewport content=\"width=device-width,initial-scale=1\"><title>Pengelolaan SKU Google One</title>",
+      "<style>" + css + "</style>",
+      "<main class=wrap>",
+      "<header class=head>",
+      "<h1>Pengelolaan SKU Google One</h1>",
+      "<div class=head-meta>Skrip lokal telah mengambil alih · " + VERSION + " · Entri laporan saat ini: " + modeName(report.configuredMode) + " · Terkumpul: " + report.scan.skus.length + " SKU · Ditulis ulang: " + report.test.hitCount + "x</div>",
+      "<nav class=toolbar aria-label=\"Operasi laporan\">" +
+        "<form method=get action=\"" + ROOT + "\"><button class=primary type=submit name=sync value=1>Kirim Dump &amp; Log ke Gist</button></form>" +
+        "<a href=\"" + ROOT + "\">Segarkan Laporan</a>" +
+        "<form method=get action=\"" + ROOT + "\"><button type=submit name=format value=json>Ekspor JSON</button></form>" +
+        "<form method=get action=\"" + ROOT + "\"><button type=submit name=dump value=1>Unduh Dump App</button></form>" +
+      "</nav>",
+      "</header>",
+      finalError ? "<p class=error role=alert>" + escape(finalError) + "</p>" : "",
+      finalNotice ? "<p class=ok-box role=status>" + escape(finalNotice) + "</p>" : "",
+      clearMessage ? "<p class=ok-box>" + escape(clearMessage) + "</p>" : "",
+      storageAvailable ? "" : "<p class=error>Antarmuka penyimpanan lokal belum siap; halaman ini belum dapat membaca catatan pengumpulan.</p>",
+      familyCoverageSection(),
+      presetTemplates(),
+      "<details class=acc" + editorOpen + "><summary><span>Aturan Pemetaan Manual (" + enabledCount + " aktif / " + config.rules.length + " aturan)</span></summary><div class=acc-body>",
+      mappingEditor(),
+      "</div></details>",
+      "<details class=acc" + execOpen + "><summary><span>Hasil Penulisan Ulang Terakhir (" + report.test.hitCount + " penggantian)</span></summary><div class=acc-body><section class=inner-sec><h2>Eksekusi Pemetaan Terakhir</h2>",
+      "<p>Target awalan 2TB yang dikonfigurasi saat ini: <code>" + escape(report.configuredTarget || "Aturan awalan 2TB terpadu tidak aktif") + "</code></p>",
+      "<p class=muted>Aturan persis (exact) dapat menimpa masing-masing ID 2TB secara individual; target aktual per baris ada di tabel bawah. Nama produk, harga, dan siklus penagihan aktual silakan cek di panel pembelian App Store.</p>",
+      "<p>Versi: " + escape(report.test.version || "Belum ada") + "<br>Mode pemetaan aktual: " + modeName(report.test.mode) + "<br>Status: " + escape(status) + "; Total penggantian: " + report.test.hitCount + "; Termasuk 2TB: " + report.test.annualHitCount + "</p>",
+      "<p>Awalan asal 2TB: <code>g1.ios.2tb.</code><br>Target 2TB pada catatan kali ini: <code>" + escape(report.test.target || "Belum tercatat") + "</code><br>" + configuredOffers + " Tabel di bawah tetap mempertahankan target aktual dan status cadangan saat eksekusi tersebut; cadangan 75p / 90p lama ditampilkan sesuai catatan asli.<br>Waktu penyimpanan konfigurasi yang dipakai (UTC): " + escape(report.test.mappingUpdatedAt || "Bawaan internal atau belum tercatat pada versi lama") + "<br>Waktu eksekusi (UTC): " + escape(report.test.updatedAt || "Belum ada") + "</p>",
+      table(report.test.matchedFrom, false),
+      "</section></div></details>",
+      "<details class=acc><summary><span>Dump Semua SKU &amp; Konteks Aplikasi (" + report.scan.skus.length + " SKU)</span></summary><div class=acc-body><section class=inner-sec><h2>Kandidat SKU yang Dikumpulkan Saat Menjelajah Halaman</h2>",
+      "<p>Total ID kumulatif: " + report.scan.skus.length + "; ID yang sama digabung hitungannya, rincian ID baru dan duplikat per respons dapat dilihat pada Catatan Eksekusi Pengumpulan di bawah.</p>",
+      "<p class=muted>ID diekstrak dari respons asli sebelum penulisan ulang dan bukan merupakan katalog lengkap toko; target pengganti yang dihasilkan skrip tidak otomatis masuk ke daftar ini.</p>",
+      report.scan.truncated ? "<p class=warn-box>Catatan telah mencapai batas 300 ID; kosongkan catatan jika ingin mengumpulkan ulang dari halaman target.</p>" : "",
+      table(report.scan.skus, true),
+      appDumpSection(),
+      "<p class=muted>Waktu pembaruan (UTC): " + escape(report.scan.updatedAt || "Belum ada") + "</p></section></div></details>",
+      "<details class=acc><summary><span>Log Diagnostik &amp; Reset Riwayat (" + report.scan.recentResponses.length + " log)</span></summary><div class=acc-body><section class=inner-sec><h2>Catatan Eksekusi Pengumpulan</h2>",
+      "<p>Skrip pengumpul aktual: <code>" + escape(report.scan.version || "Belum ada catatan") + "</code><br>Mode pengumpulan aktual: " + modeName(report.scan.mode) + "<br>" + scanVersionStatus + "</p>",
+      "<p>Respons teks dipindai: " + report.scan.scannedResponses + "; Respons non-teks dicatat: " + report.scan.nonTextResponses +
+        "; Respons berisi ID produk: " + report.scan.matchedResponses + "; Total ID unik: " + report.scan.skus.length + "</p>",
+      "<p>Waktu penyimpanan terakhir (UTC): " + escape(report.scan.updatedAt || "Belum ada") + "</p>",
+      latestScan ? "<p><strong>Terbaru: " + scanStatuses[latestScan.status] + "</strong><br>Terdeteksi " +
+        latestScan.candidateCount + " ID berbeda, baru dicatat " + latestScan.addedCount + ", di luar kapasitas " + latestScan.omittedCount + ".</p>" : "",
+      "<h3>10 Respons Terakhir</h3>", recentTable(report.scan.recentResponses),
+      "<p class=muted>Halaman ini dibuat secara lokal oleh Shadowrocket di perangkat ini; bilah alamat tetap memakai one.google.com, sementara konfigurasi pemetaan dan catatan pengumpulan disimpan di perangkat ini. Cukup aktifkan satu modul G1 ACQ saja.</p>",
+      "<p class=muted>Jika jumlah bertambah dan status menunjukkan ID duplikat, artinya respons sudah diterima; jika waktu dan jumlah tidak berubah, periksa dekripsi HTTPS dan log skrip.</p>",
+      "<form method=get action=\"" + ROOT + "\" class=reset><button name=clear value=1>Kosongkan Catatan Pengumpulan dan Uji Coba Alat Ini</button></form>",
+      "<p class=muted>Mengosongkan catatan tetap mempertahankan konfigurasi pemetaan; setelah melihat paket, segarkan halaman ini untuk melihat catatan baru, dan biarkan pemindai terpisah maupun salinan penulisan ulang lama tetap nonaktif.</p>",
+      "</section></div></details>",
+      "</main></html>"
+    ].join("");
+  }
+
+  if (method === "GET" && query("sync") === "1") {
+    var syncBody = JSON.stringify({ syncedAt: new Date().toISOString(), report: report, appDump: appDump }, null, 2);
+    if (typeof $httpClient !== "undefined" && $httpClient && typeof $httpClient.post === "function") {
+      $httpClient.post({
+        url: SYNC_URL,
+        timeout: 8,
+        headers: {
+          "Filename": "g1-iphone-dump.json",
+          "Title": "G1 ACQ iPhone Dump"
+        },
+        body: syncBody
+      }, function (err, resp, respBody) {
+        var ok = !err && resp && (resp.status >= 200 && resp.status < 300);
+        var infoId = "";
+        if (ok && typeof respBody === "string") {
+          try { infoId = JSON.parse(respBody).id || ""; } catch (e) { infoId = ""; }
+        }
+        var sNotice = ok ? "Dump App & Log berhasil dikirim ke Cloud Relay (ID: " + (infoId || "OK") + ", " + syncBody.length + " byte). Beritahu AI untuk langsung tarik datanya." : "";
+        var sErr = ok ? "" : "Gagal mengirim dump ke Cloud Relay" + (err ? " (" + String(err) + ")" : resp ? " (HTTP " + resp.status + ")" : "") + "; gunakan tombol Ekspor JSON / Unduh Dump App.";
+        $done({ response: { status: responseStatus, headers: headers, body: renderHtml(sNotice, sErr) } });
+      });
+      return;
+    }
+    noticeText = "Antarmuka jaringan skrip tidak tersedia di lingkungan ini; gunakan tombol Unduh Dump App atau Ekspor JSON.";
+  }
+
+  $done({ response: { status: responseStatus, headers: headers, body: renderHtml("", "") } });
 })();
