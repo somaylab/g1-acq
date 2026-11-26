@@ -3,7 +3,7 @@
 
 (function () {
   var ROOT = "https://one.google.com/g1-sku-report";
-  var VERSION = "v7.12.0";
+  var VERSION = "v7.12.1";
   var COLLECTOR_VERSION = "g1-acq-v7.12-mappings";
   var MODE_NAMES = {
     discount75: "Ultra 3 Bulan 75p (Diskon 75% / Bayar 25%)",
