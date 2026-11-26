@@ -3,7 +3,7 @@
 
 (function () {
   var ROOT = "https://one.google.com/g1-sku-report";
-  var VERSION = "v7.12.3";
+  var VERSION = "v7.12.4";
   var COLLECTOR_VERSION = "g1-acq-v7.12-mappings";
   var MODE_NAMES = {
     discount75: "Ultra 3 Bulan 75p (Diskon 75% / Bayar 25%)",
@@ -431,105 +431,49 @@ function createG1MappingConfig(store) {
     } catch (error) {
       clearMessage = "Antarmuka penyimpanan lokal belum siap.";
     }
-  } else if (!exportJSON && query("quickfix")) {
-    var qf = query("quickfix");
-    var qfSets = {
-      pro99: [
-        { match: "prefix", from: "g1.ios.2tb.", to: "com.google.gemini.2tb.ai.m.3month_ip_99p", enabled: true },
+  } else if (!exportJSON && query("jalur")) {
+    var j = query("jalur");
+    var jSets = {
+      "pro99-20tb": [
+        { match: "exact", from: "g1.ios.20tb.m.v2", to: "com.google.gemini.2tb.ai.m.3month_ip_99p", enabled: true }
+      ],
+      "pro99-all": [
         { match: "prefix", from: "g1.ios.ai.2tb.", to: "com.google.gemini.2tb.ai.m.3month_ip_99p", enabled: true },
-        { match: "prefix", from: "g1.ios.helium.", to: "com.google.gemini.2tb.ai.m.3month_ip_99p", enabled: true }
+        { match: "prefix", from: "g1.ios.helium.", to: "com.google.gemini.2tb.ai.m.3month_ip_99p", enabled: true },
+        { match: "prefix", from: "g1.ios.2tb.", to: "com.google.gemini.2tb.ai.m.3month_ip_99p", enabled: true }
       ],
-      pro90: [
-        { match: "prefix", from: "g1.ios.2tb.", to: "g1.2tb.ai.12months_ip_90p", enabled: true },
-        { match: "prefix", from: "g1.ios.ai.2tb.", to: "g1.2tb.ai.12months_ip_90p", enabled: true },
-        { match: "prefix", from: "g1.ios.helium.", to: "g1.2tb.ai.12months_ip_90p", enabled: true }
+      "turki-all": [
+        { match: "exact", from: "g1.ios.30tb.ai.pro.m", to: "g1.ios.30tb.m", enabled: true },
+        { match: "exact", from: "g1.ios.20tb.m.v2", to: "g1.ios.20tb.m", enabled: true },
+        { match: "exact", from: "g1.ios.2tb.a.1year_ip_5p", to: "g1.ios.2tb.y", enabled: true },
+        { match: "exact", from: "g1.ios.2tb.a.12month_ip_15p", to: "g1.ios.2tb.y", enabled: true }
       ],
-      ultra75: [
-        { match: "exact", from: "g1.ios.20tb.m.v2", to: "g1.20tb.3months_ip_75p.acq", enabled: true },
-        { match: "exact", from: "g1.ios.30tb.ai.pro.m", to: "g1.ai.ultra.3months_ip_75p.acq", enabled: true },
-        { match: "prefix", from: "g1.ios.ai.2tb.", to: "g1.ai.ultra.3months_ip_75p.acq", enabled: true },
-        { match: "prefix", from: "g1.ios.2tb.", to: "g1.ai.ultra.3months_ip_75p.acq", enabled: true }
+      "combo": [
+        { match: "prefix", from: "g1.ios.ai.2tb.", to: "com.google.gemini.2tb.ai.m.3month_ip_99p", enabled: true },
+        { match: "prefix", from: "g1.ios.helium.", to: "com.google.gemini.2tb.ai.m.3month_ip_99p", enabled: true },
+        { match: "prefix", from: "g1.ios.2tb.", to: "com.google.gemini.2tb.ai.m.3month_ip_99p", enabled: true },
+        { match: "exact", from: "g1.ios.30tb.ai.pro.m", to: "g1.ios.30tb.m", enabled: true },
+        { match: "exact", from: "g1.ios.20tb.m.v2", to: "g1.ios.20tb.m", enabled: true }
       ]
     };
-    if (Object.prototype.hasOwnProperty.call(qfSets, qf)) {
-      var qRules = config.rules.slice();
-      var qPos = Object.create(null);
-      var qIds = Object.create(null);
-      qRules.forEach(function (r, idx) {
-        qIds[r.id] = true;
-        qPos[r.match + ":" + r.from] = idx;
+    if (Object.prototype.hasOwnProperty.call(jSets, j)) {
+      var usedIds = Object.create(null);
+      var cleanRules = jSets[j].map(function (r, idx) {
+        var rid = engine.newId() + "-" + idx;
+        while (usedIds[rid]) rid = engine.newId() + "-" + idx;
+        usedIds[rid] = true;
+        return { id: rid, match: r.match, from: r.from, to: r.to, enabled: true };
       });
-      qfSets[qf].forEach(function (targetRule) {
-        var key = targetRule.match + ":" + targetRule.from;
-        if (typeof qPos[key] === "number") {
-          var exist = qRules[qPos[key]];
-          qRules[qPos[key]] = { id: exist.id, match: targetRule.match, from: targetRule.from, to: targetRule.to, enabled: true };
-        } else {
-          var newRuleId = engine.newId();
-          for (var n = 1; n <= qRules.length && qIds[newRuleId]; n += 1) newRuleId = engine.newId() + "-" + n;
-          qIds[newRuleId] = true;
-          qPos[key] = qRules.length;
-          qRules.push({ id: newRuleId, match: targetRule.match, from: targetRule.from, to: targetRule.to, enabled: true });
-        }
-      });
-      var qSaved = engine.save(config.revision, qRules, false);
-      if (qSaved.ok) {
-        config = qSaved.config;
-        quickfixNotice = "Pemetaan otomatis selesai diterapkan untuk semua keluarga SKU (Pro 2TB, AI Pro 2TB, & AI Plus). Buka ulang halaman paket Google One untuk menguji.";
+      var jSaved = engine.save(config.revision, cleanRules, false);
+      if (jSaved.ok) {
+        config = jSaved.config;
+        quickfixNotice = "Jalur aktif diperbarui (" + cleanRules.length + " aturan bersih). Buka ulang halaman paket Google One di aplikasi untuk menggunakan konfigurasi baru.";
       } else {
-        actionError = qSaved.error;
-        config = engine.read();
-      }
-    }
-  } else if (!exportJSON && (query("testultra") || query("testall"))) {
-    var testAllSku = query("testall");
-    var testUltraSku = query("testultra");
-    var testTarget = testAllSku || testUltraSku;
-    if (engine.validSku(testTarget)) {
-      var tRules = config.rules.slice();
-      var tPos = Object.create(null);
-      var tIds = Object.create(null);
-      tRules.forEach(function (r, idx) {
-        tIds[r.id] = true;
-        tPos[r.match + ":" + r.from] = idx;
-      });
-      function upsertTarget(matchType, fromId, toId) {
-        var k = matchType + ":" + fromId;
-        if (typeof tPos[k] === "number") {
-          var existing = tRules[tPos[k]];
-          tRules[tPos[k]] = { id: existing.id, match: matchType, from: fromId, to: toId, enabled: true };
-        } else {
-          var nid = engine.newId();
-          for (var c = 1; c <= tRules.length && tIds[nid]; c += 1) nid = engine.newId() + "-" + c;
-          tIds[nid] = true;
-          tPos[k] = tRules.length;
-          tRules.push({ id: nid, match: matchType, from: fromId, to: toId, enabled: true });
-        }
-      }
-      upsertTarget("exact", "g1.ios.20tb.m.v2", testTarget);
-      upsertTarget("exact", "g1.ios.30tb.ai.pro.m", testTarget);
-      if (testAllSku) {
-        upsertTarget("prefix", "g1.ios.ai.2tb.", testTarget);
-        upsertTarget("prefix", "g1.ios.2tb.", testTarget);
-      } else {
-        ["g1.ios.2tb.", "g1.ios.ai.2tb.", "g1.ios.helium."].forEach(function (pfx) {
-          if (typeof tPos["prefix:" + pfx] !== "number") {
-            upsertTarget("prefix", pfx, "com.google.gemini.2tb.ai.m.3month_ip_99p");
-          }
-        });
-      }
-      var tSaved = engine.save(config.revision, tRules, false);
-      if (tSaved.ok) {
-        config = tSaved.config;
-        quickfixNotice = "Mode Uji Aktif: Target " + testTarget + " dipasang pada " +
-          (testAllSku ? "semua slot (Ultra 20TB/30TB + AI Pro 2TB + Pro 2TB)" : "slot Ultra (20TB + 30TB), slot Pro tetap aman") +
-          ". Buka ulang halaman paket di aplikasi lalu klik langganan untuk tes panel App Store!";
-      } else {
-        actionError = tSaved.error;
+        actionError = jSaved.error;
         config = engine.read();
       }
     } else {
-      actionError = "Target SKU uji tidak valid: " + testTarget;
+      actionError = "Jalur tidak dikenali: " + j;
     }
   }
 
@@ -786,6 +730,7 @@ function createG1MappingConfig(store) {
       "g1.30tb.3months_ip_75p.acq": { tier: "Target 30TB 75%", cls: "t-ok", label: "Target 30TB · 3 Bln Diskon 75%" },
       "g1.ios.20tb.m": { tier: "Target Turki 20TB", cls: "t-ok", label: "Target Turki 20TB · 1989.99 TRY" },
       "g1.ios.30tb.m": { tier: "Target Turki 30TB", cls: "t-ok", label: "Target Turki 30TB · 2949.99 TRY" },
+      "g1.ios.2tb.y": { tier: "Target Turki 2TB Thn", cls: "t-ok", label: "Target Turki 2TB Tahunan · 499.99 TRY" },
       "g1.ios.ai.2tb.": { tier: "AI Pro 2TB", cls: "t-hi", label: "Semua paket AI Pro 2TB iOS" },
       "g1.ios.2tb.": { tier: "Pro 2TB", cls: "t-hi", label: "Semua paket Pro 2TB iOS" },
       "g1.ios.helium.": { tier: "AI Plus", cls: "t-hi", label: "Semua paket AI Plus (Helium) iOS" },
@@ -934,127 +879,35 @@ function createG1MappingConfig(store) {
   function revisionInput() {
     return "<input type=hidden name=revision value=\"" + escape(config.revision) + "\">";
   }
-  function familyCoverageSection() {
-    var families = [
-      { title: "AI Pro 2TB", matchFn: function (id) { return /^g1\.ios\.ai\.2tb\./.test(id); }, sample: "g1.ios.ai.2tb.m.ip_3mo_75p.acq" },
-      { title: "AI Plus (Helium)", matchFn: function (id) { return /^g1\.ios\.helium\./.test(id); }, sample: "g1.ios.helium.m.3month_ip_75p.acq" },
-      { title: "Pro 2TB Standar", matchFn: function (id) { return /^g1\.ios\.2tb\./.test(id); }, sample: "g1.ios.2tb.m.3month_ip_75p" },
-      { title: "Ultra 20TB", matchFn: function (id) { return /^g1\.ios\.20tb\./.test(id); }, sample: "g1.ios.20tb.m.v2" },
-      { title: "Ultra 30TB", matchFn: function (id) { return /^g1\.ios\.30tb\./.test(id); }, sample: "g1.ios.30tb.ai.pro.m" },
-      { title: "Basic / Lite (30GB–100GB)", matchFn: function (id) { return /^g1\.ios\.(?:30|100|200)gb\./.test(id); }, sample: "g1.ios.100gb.m.3month_ip_75p" }
-    ];
-    var tableRows = families.map(function (fam) {
-      var seenHits = 0;
-      var foundSample = "";
-      report.scan.skus.forEach(function (row) {
-        if (fam.matchFn(row.id)) {
-          seenHits += row.count;
-          if (!foundSample) foundSample = row.id;
-        }
-      });
-      var testId = foundSample || fam.sample;
-      var rule = validConfig ? engine.resolve(testId, config) : null;
-      var targetInfo = rule ? describeSku(rule.to) : null;
-      return "<tr><td><strong>" + escape(fam.title) + "</strong><div class=sub-txt>" +
-        (seenHits ? "Terdeteksi " + seenHits + "x di aplikasi" : "Contoh: " + escape(fam.sample)) + "</div></td>" +
-        "<td>" + (rule ? "<span class=\"tag t-ok\">Aktif</span>" : "<span class=\"tag t-warn\">Belum dipetakan</span>") + "</td>" +
-        "<td>" + (rule ? "<div class=sub-txt>" + escape(targetInfo.label) + "</div><code>" + escape(rule.to) + "</code>" : "<span class=muted>Dibiarkan asli oleh skrip</span>") + "</td></tr>";
-    }).join("");
-    return "<section class=card><div class=card-head><h2>Status Pemetaan Paket Aplikasi</h2>" +
-      "<span class=meta>" + enabledCount + "/" + config.rules.length + " aturan aktif</span></div>" +
-      "<p class=muted>Memeriksa paket Google One yang muncul di iPhone apakah sudah tertangkap aturan saat ini atau masih terlewat.</p>" +
-      "<div class=scroll><table><thead><tr><th>Paket</th><th>Status</th><th>Target Pengganti</th></tr></thead><tbody>" + tableRows + "</tbody></table></div>" +
-      "<div class=qf-bar><span class=qf-label>Perbaiki Sekali Klik (Semua Pro + AI Pro 2TB + AI Plus):</span>" +
-      "<form method=get action=\"" + ROOT + "\" class=qf-forms>" +
-      "<button class=primary type=submit name=quickfix value=pro99" + (!writable || !validConfig ? " disabled" : "") + ">Semua Pro/AI → Promo 99%</button>" +
-      "<button type=submit name=quickfix value=pro90" + (!writable || !validConfig ? " disabled" : "") + ">Semua Pro/AI → 12 Bln 90%</button>" +
-      "<button type=submit name=quickfix value=ultra75" + (!writable || !validConfig ? " disabled" : "") + ">Ultra 20TB/30TB + AI → 75%</button>" +
-      "</form></div></section>";
-  }
-  function testLabSection() {
-    var active30 = "";
-    var active20 = "";
-    if (validConfig) {
-      var r30 = engine.resolve("g1.ios.30tb.ai.pro.m", config);
-      var r20 = engine.resolve("g1.ios.20tb.m.v2", config);
-      active30 = r30 ? r30.to : "";
-      active20 = r20 ? r20.to : "";
-    }
-    var groups = [
-      {
-        title: "Prioritas 1 · Ultra 30TB Seri g1.ai.pro.* (PREMIUM_AI_PRO)",
-        open: true,
-        items: [
-          { sku: "g1.ai.pro.1month_eft", note: "Free Trial 1 Bulan (Ultra 30TB)" },
-          { sku: "g1.ai.pro.12months_eft", note: "Free Trial 12 Bulan (Ultra 30TB)" },
-          { sku: "g1.ai.pro.3months_ip_90p.acq", note: "3 Bulan Diskon 90% (Ultra 30TB)" },
-          { sku: "g1.ai.pro.3months_ip_85p.acq", note: "3 Bulan Diskon 85% (Ultra 30TB)" },
-          { sku: "g1.ai.pro.3months_ip_80p.acq", note: "3 Bulan Diskon 80% (Ultra 30TB)" },
-          { sku: "g1.ai.pro.3months_ip_75p.acq", note: "3 Bulan Diskon 75% (Ultra 30TB)" },
-          { sku: "g1.ai.pro.annual", note: "Paket Tahunan (Ultra 30TB)" },
-          { sku: "g1.ai.pro", note: "Base SKU — Terdeteksi 51x di Dump Akun Lu" }
-        ]
-      },
-      {
-        title: "Prioritas 2 · AI Ultra Seri g1.ai.ultra.* & g1.30tb.*",
-        open: false,
-        items: [
-          { sku: "g1.30tb.3months_ip_90p.acq", note: "Ultra 30TB · 3 Bulan Diskon 90%" },
-          { sku: "g1.ai.ultra.1month_eft", note: "AI Ultra · Free Trial 1 Bulan" },
-          { sku: "g1.ai.ultra.1month_eft.acq", note: "AI Ultra · Free Trial 1 Bulan (.acq)" },
-          { sku: "g1.ai.ultra.12months_eft", note: "AI Ultra · Free Trial 12 Bulan" },
-          { sku: "g1.ai.ultra.3months_ip_90p.acq", note: "AI Ultra · 3 Bulan Diskon 90%" },
-          { sku: "g1.ai.ultra.3months_ip_85p.acq", note: "AI Ultra · 3 Bulan Diskon 85%" },
-          { sku: "g1.ai.ultra.3months_ip_80p.acq", note: "AI Ultra · 3 Bulan Diskon 80%" },
-          { sku: "g1.ai.ultra.annual", note: "AI Ultra · Paket Tahunan" }
-        ]
-      },
-      {
-        title: "Prioritas 3 · Ultra 20TB & Pola iOS / Gemini (g1.20tb.* / .ios. / gemini)",
-        open: false,
-        items: [
-          { sku: "g1.20tb.1month_eft.acq", note: "Ultra 20TB · Free Trial 1 Bulan (.acq)" },
-          { sku: "g1.20tb.1month_eft", note: "Ultra 20TB · Free Trial 1 Bulan" },
-          { sku: "g1.20tb.12months_eft", note: "Ultra 20TB · Free Trial 12 Bulan" },
-          { sku: "g1.20tb.3months_ip_90p.acq", note: "Ultra 20TB · 3 Bulan Diskon 90%" },
-          { sku: "g1.ios.30tb.ai.pro.m.ip_3mo_75p.acq", note: "Kandidat Native iOS 30TB · 3 Bulan 75%" },
-          { sku: "g1.ios.20tb.m.ip_3mo_75p.acq", note: "Kandidat Native iOS 20TB · 3 Bulan 75%" },
-          { sku: "com.google.gemini.30tb.ai.pro.m.3month_ip_99p", note: "Kandidat Namespace Gemini 30TB · 99%" },
-          { sku: "g1.20tb.v2", note: "Ultra 20TB Base — Terdeteksi 62x di Dump Akun" }
-        ]
-      },
-      {
-        title: "Prioritas 4 · Hidden Offer Akun Lu (Diskon 95% & Free Trial Pro / 10TB)",
-        open: false,
-        items: [
-          { sku: "g1.2tb.1month_ip_95p.acq", note: "Pro 2TB · 1 Bln Diskon 95% (Terdeteksi di Dump)" },
-          { sku: "g1.2tb.1month_eft", note: "Pro 2TB · Free Trial 1 Bulan" },
-          { sku: "g1.2tb.ai.12months_ip_90p", note: "AI Pro 2TB · 12 Bln Diskon 90%" },
-          { sku: "g1.2tb.annual.12months_ip_40p", note: "Pro 2TB · Tahunan 40% (Terdeteksi di Dump)" },
-          { sku: "g1.helium.3months_ip_75p.acq", note: "AI Plus · 3 Bln 75% (Terdeteksi di Dump)" },
-          { sku: "g1.200gb.1month_ip_95p.acq", note: "200GB · 1 Bln Diskon 95% (Terdeteksi di Dump)" },
-          { sku: "g1.10tb", note: "10TB Hidden SKU (Terdeteksi 33x di Dump)" }
-        ]
-      }
-    ];
-    return "<section class=card><div class=card-head><h2>Lab Uji SKU Ultra &amp; Hidden Offer (1 Klik)</h2>" +
-      "<span class=meta>31 kandidat</span></div>" +
-      "<p class=muted>Target Ultra 75p gagal di App Store. Uji kandidat seri <code>g1.ai.pro.*</code> (PREMIUM_AI_PRO), <code>_eft</code> (Free Trial), &amp; <code>_95p</code> sekali klik lalu buka ulang halaman paket di aplikasi.</p>" +
-      groups.map(function (g) {
-        var rows = g.items.map(function (it) {
-          var isUsing = it.sku === active30 || it.sku === active20;
-          return "<tr><td><div class=sub-txt>" + escape(it.note) +
-            (isUsing ? " <span class=\"tag t-ok\">Sedang Dipakai</span>" : "") +
-            "</div><code>" + escape(it.sku) + "</code></td>" +
-            "<td class=lab-act><form method=get action=\"" + ROOT + "\" class=lab-forms>" +
-            "<button type=submit name=testultra value=\"" + escape(it.sku) + "\"" + (!writable || !validConfig ? " disabled" : "") + ">Uji di Ultra</button>" +
-            "<button type=submit name=testall value=\"" + escape(it.sku) + "\"" + (!writable || !validConfig ? " disabled" : "") + ">Semua Slot</button>" +
-            "</form></td></tr>";
-        }).join("");
-        return "<details class=sub-drawer" + (g.open ? " open" : "") + "><summary><span>" + escape(g.title) + "</span></summary>" +
-          "<div class=sub-drawer-body><div class=scroll><table><thead><tr><th>SKU Target Uji</th><th>Pasang Cepat</th></tr></thead><tbody>" +
-          rows + "</tbody></table></div></div></details>";
-      }).join("") + "</section>";
+  function twoChannelsSection() {
+    var activeRules = validConfig ? config.rules.filter(function (r) { return r.enabled; }) : [];
+    var hasJalur1 = activeRules.some(function (r) { return r.to === "com.google.gemini.2tb.ai.m.3month_ip_99p"; });
+    var hasJalur2 = activeRules.some(function (r) { return r.to === "g1.ios.30tb.m" || r.to === "g1.ios.20tb.m" || r.to === "g1.ios.2tb.y"; });
+    var dis = !writable || !validConfig ? " disabled" : "";
+    return "<section class=ch-grid>" +
+      "<article class=\"card ch-card" + (hasJalur1 ? " ch-active" : "") + "\">" +
+        "<div class=card-head><div><h2>Jalur 1 · AI Pro Diskon 99% (3 Bulan)</h2>" +
+        "<div class=sub-txt>Target: <code>com.google.gemini.2tb.ai.m.3month_ip_99p</code></div></div>" +
+        "<span class=\"tag " + (hasJalur1 ? "t-ok" : "t-dim") + "\">" + (hasJalur1 ? "Aktif" : "Nonaktif") + "</span></div>" +
+        "<p class=ch-price><strong>Rp 3.000/bln</strong> (ID) · ₹10/bln (IN) · $0.29/bln (US) · ₺5.39/bln (TR)</p>" +
+        "<p class=muted>Bekerja di hampir semua region Apple ID (tanpa perlu ganti Google region). Jika mode <b>Slot Tunggal</b> aktif, klik tombol <b>Ultra 20TB</b> di halaman Google One untuk memunculkan pop-up Pro Rp 3.000/bln.</p>" +
+        "<form method=get action=\"" + ROOT + "\" class=ch-actions>" +
+          "<button class=primary type=submit name=jalur value=pro99-20tb" + dis + ">Aktifkan Slot Tunggal (Via 20TB · Anti-Bentrok)</button>" +
+          "<button type=submit name=jalur value=pro99-all" + dis + ">Aktifkan di Semua Slot Pro &amp; AI Plus</button>" +
+        "</form>" +
+      "</article>" +
+      "<article class=\"card ch-card" + (hasJalur2 ? " ch-active" : "") + "\">" +
+        "<div class=card-head><div><h2>Jalur 2 · AI Ultra &amp; 2TB Tahunan Turki</h2>" +
+        "<div class=sub-txt>Wajib login <b>Apple ID Turki (TR)</b> di App Store Media &amp; Pembelian</div></div>" +
+        "<span class=\"tag " + (hasJalur2 ? "t-ok" : "t-dim") + "\">" + (hasJalur2 ? "Aktif" : "Nonaktif") + "</span></div>" +
+        "<p class=ch-price><strong>Ultra 30TB</strong> ₺2.949,99/bln · <strong>Ultra 20TB</strong> ₺1.989,99/bln · <strong>2TB Tahunan</strong> ₺499,99/thn</p>" +
+        "<p class=muted>Satu-satunya jalur True Ultra (20TB / 30TB) yang masih hidup di Apple StoreKit iOS memakai SKU legacy tanpa akhiran <code>.v2</code> / <code>.ai.pro</code>.</p>" +
+        "<form method=get action=\"" + ROOT + "\" class=ch-actions>" +
+          "<button class=primary type=submit name=jalur value=turki-all" + dis + ">Aktifkan Jalur 2 (Khusus Ultra &amp; 2TB Turki)</button>" +
+          "<button type=submit name=jalur value=combo" + dis + ">Aktifkan Gabungan (Jalur 1 Pro + Jalur 2 Ultra)</button>" +
+        "</form>" +
+      "</article>" +
+    "</section>";
   }
   function presetTemplates() {
     return "<section id=mapping-presets class=card><div class=card-head><h2>Templat Pemetaan Siap Pakai</h2></div>" +
@@ -1196,9 +1049,11 @@ function createG1MappingConfig(store) {
     ".num{font-variant-numeric:tabular-nums;font-weight:600}",
     ".mono-t{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:#9ca3af;white-space:nowrap}",
     ".ctx-cell code{display:block;max-width:340px;font-size:11px;line-height:1.4}",
-    ".qf-bar{margin-top:12px;padding-top:12px;border-top:1px solid #232329}",
-    ".qf-label{display:block;font-size:12px;color:#d4d4d8;font-weight:600;margin-bottom:8px}",
-    ".qf-forms{display:flex;gap:8px;flex-wrap:wrap}",
+    ".ch-grid{display:flex;flex-direction:column;gap:12px;margin:14px 0}",
+    ".ch-card{margin:0}",
+    ".ch-active{border-color:#2b6b45}",
+    ".ch-price{font-size:13.5px;color:#ececf1;margin:8px 0 4px}",
+    ".ch-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}",
     ".preset-list{display:flex;flex-direction:column;gap:8px;margin-top:10px}",
     ".preset{margin:0}",
     "fieldset{min-width:0;margin:0;border:1px solid #232329;border-radius:8px;padding:12px;background:#16161b}",
@@ -1221,16 +1076,14 @@ function createG1MappingConfig(store) {
     ".check{display:flex!important;align-items:center;gap:8px;align-self:end;min-height:38px;color:#ececf1!important}",
     ".check input{width:16px;height:16px}",
     ".actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}",
-    ".lab-act{white-space:nowrap;width:1%}",
-    ".lab-forms{display:flex;gap:6px}",
-    ".lab-forms button{padding:5px 9px;font-size:12px}",
     ".reset{margin-top:12px}",
     "button:disabled,fieldset:disabled{opacity:.45;cursor:default}",
-    "@media(max-width:640px){body{padding:14px 10px 36px}.fields{grid-template-columns:1fr}.toolbar,.qf-forms{flex-direction:column}.toolbar button,.toolbar a,.qf-forms button{width:100%}.lab-forms{flex-direction:column}}"
+    "@media(max-width:640px){body{padding:14px 10px 36px}.fields{grid-template-columns:1fr}.toolbar,.ch-actions{flex-direction:column}.toolbar button,.toolbar a,.ch-actions button{width:100%}}"
   ].join("");
   function renderHtml(extraNotice, extraError) {
     var finalError = extraError || actionError;
     var finalNotice = extraNotice || noticeText;
+    var advOpen = editorOpen || execOpen ? " open" : "";
     return [
       "<!doctype html><html lang=id><meta charset=utf-8>",
       "<meta name=viewport content=\"width=device-width,initial-scale=1\"><title>Pengelolaan SKU Google One</title>",
@@ -1238,39 +1091,36 @@ function createG1MappingConfig(store) {
       "<main class=wrap>",
       "<header class=head>",
       "<h1>Pengelolaan SKU Google One</h1>",
-      "<div class=head-meta>Skrip lokal telah mengambil alih · " + VERSION + " · Entri laporan saat ini: " + modeName(report.configuredMode) + " · Terkumpul: " + report.scan.skus.length + " SKU · Ditulis ulang: " + report.test.hitCount + "x</div>",
+      "<div class=head-meta>Skrip lokal telah mengambil alih · " + VERSION + " · Entri laporan saat ini: " + modeName(report.configuredMode) + " · " + enabledCount + " aturan aktif</div>",
       "<nav class=toolbar aria-label=\"Operasi laporan\">" +
-        "<form method=get action=\"" + ROOT + "\"><button class=primary type=submit name=sync value=1>Kirim Dump &amp; Log ke Gist</button></form>" +
         "<a href=\"" + ROOT + "\">Segarkan Laporan</a>" +
+        "<form method=get action=\"" + ROOT + "\"><button type=submit name=sync value=1>Kirim Dump &amp; Log ke Gist</button></form>" +
         "<form method=get action=\"" + ROOT + "\"><button type=submit name=format value=json>Ekspor JSON</button></form>" +
-        "<form method=get action=\"" + ROOT + "\"><button type=submit name=dump value=1>Unduh Dump App</button></form>" +
       "</nav>",
       "</header>",
       finalError ? "<p class=error role=alert>" + escape(finalError) + "</p>" : "",
       finalNotice ? "<p class=ok-box role=status>" + escape(finalNotice) + "</p>" : "",
       clearMessage ? "<p class=ok-box>" + escape(clearMessage) + "</p>" : "",
       storageAvailable ? "" : "<p class=error>Antarmuka penyimpanan lokal belum siap; halaman ini belum dapat membaca catatan pengumpulan.</p>",
-      familyCoverageSection(),
-      testLabSection(),
+      twoChannelsSection(),
+      "<details class=acc" + advOpen + "><summary><span>Pengaturan Lanjutan, Editor Manual &amp; Log Diagnostik (" + enabledCount + " aturan · " + report.test.hitCount + " hit · " + report.scan.skus.length + " SKU)</span></summary><div class=acc-body>",
       presetTemplates(),
-      "<details class=acc" + editorOpen + "><summary><span>Aturan Pemetaan Manual (" + enabledCount + " aktif / " + config.rules.length + " aturan)</span></summary><div class=acc-body>",
       mappingEditor(),
-      "</div></details>",
-      "<details class=acc" + execOpen + "><summary><span>Hasil Penulisan Ulang Terakhir (" + report.test.hitCount + " penggantian)</span></summary><div class=acc-body><section class=inner-sec><h2>Eksekusi Pemetaan Terakhir</h2>",
+      "<details class=sub-drawer" + execOpen + "><summary><span>Hasil Penulisan Ulang Terakhir (" + report.test.hitCount + " penggantian)</span></summary><div class=sub-drawer-body><section class=inner-sec><h2>Eksekusi Pemetaan Terakhir</h2>",
       "<p>Target awalan 2TB yang dikonfigurasi saat ini: <code>" + escape(report.configuredTarget || "Aturan awalan 2TB terpadu tidak aktif") + "</code></p>",
       "<p class=muted>Aturan persis (exact) dapat menimpa masing-masing ID 2TB secara individual; target aktual per baris ada di tabel bawah. Nama produk, harga, dan siklus penagihan aktual silakan cek di panel pembelian App Store.</p>",
       "<p>Versi: " + escape(report.test.version || "Belum ada") + "<br>Mode pemetaan aktual: " + modeName(report.test.mode) + "<br>Status: " + escape(status) + "; Total penggantian: " + report.test.hitCount + "; Termasuk 2TB: " + report.test.annualHitCount + "</p>",
       "<p>Awalan asal 2TB: <code>g1.ios.2tb.</code><br>Target 2TB pada catatan kali ini: <code>" + escape(report.test.target || "Belum tercatat") + "</code><br>" + configuredOffers + " Tabel di bawah tetap mempertahankan target aktual dan status cadangan saat eksekusi tersebut; cadangan 75p / 90p lama ditampilkan sesuai catatan asli.<br>Waktu penyimpanan konfigurasi yang dipakai (UTC): " + escape(report.test.mappingUpdatedAt || "Bawaan internal atau belum tercatat pada versi lama") + "<br>Waktu eksekusi (UTC): " + escape(report.test.updatedAt || "Belum ada") + "</p>",
       table(report.test.matchedFrom, false),
       "</section></div></details>",
-      "<details class=acc><summary><span>Dump Semua SKU &amp; Konteks Aplikasi (" + report.scan.skus.length + " SKU)</span></summary><div class=acc-body><section class=inner-sec><h2>Kandidat SKU yang Dikumpulkan Saat Menjelajah Halaman</h2>",
+      "<details class=sub-drawer><summary><span>Dump Semua SKU &amp; Konteks Aplikasi (" + report.scan.skus.length + " SKU)</span></summary><div class=sub-drawer-body><section class=inner-sec><h2>Kandidat SKU yang Dikumpulkan Saat Menjelajah Halaman</h2>",
       "<p>Total ID kumulatif: " + report.scan.skus.length + "; ID yang sama digabung hitungannya, rincian ID baru dan duplikat per respons dapat dilihat pada Catatan Eksekusi Pengumpulan di bawah.</p>",
       "<p class=muted>ID diekstrak dari respons asli sebelum penulisan ulang dan bukan merupakan katalog lengkap toko; target pengganti yang dihasilkan skrip tidak otomatis masuk ke daftar ini.</p>",
       report.scan.truncated ? "<p class=warn-box>Catatan telah mencapai batas 300 ID; kosongkan catatan jika ingin mengumpulkan ulang dari halaman target.</p>" : "",
       table(report.scan.skus, true),
       appDumpSection(),
       "<p class=muted>Waktu pembaruan (UTC): " + escape(report.scan.updatedAt || "Belum ada") + "</p></section></div></details>",
-      "<details class=acc><summary><span>Log Diagnostik &amp; Reset Riwayat (" + report.scan.recentResponses.length + " log)</span></summary><div class=acc-body><section class=inner-sec><h2>Catatan Eksekusi Pengumpulan</h2>",
+      "<details class=sub-drawer><summary><span>Log Diagnostik &amp; Reset Riwayat (" + report.scan.recentResponses.length + " log)</span></summary><div class=sub-drawer-body><section class=inner-sec><h2>Catatan Eksekusi Pengumpulan</h2>",
       "<p>Skrip pengumpul aktual: <code>" + escape(report.scan.version || "Belum ada catatan") + "</code><br>Mode pengumpulan aktual: " + modeName(report.scan.mode) + "<br>" + scanVersionStatus + "</p>",
       "<p>Respons teks dipindai: " + report.scan.scannedResponses + "; Respons non-teks dicatat: " + report.scan.nonTextResponses +
         "; Respons berisi ID produk: " + report.scan.matchedResponses + "; Total ID unik: " + report.scan.skus.length + "</p>",
@@ -1283,6 +1133,7 @@ function createG1MappingConfig(store) {
       "<form method=get action=\"" + ROOT + "\" class=reset><button name=clear value=1>Kosongkan Catatan Pengumpulan dan Uji Coba Alat Ini</button></form>",
       "<p class=muted>Mengosongkan catatan tetap mempertahankan konfigurasi pemetaan; setelah melihat paket, segarkan halaman ini untuk melihat catatan baru, dan biarkan pemindai terpisah maupun salinan penulisan ulang lama tetap nonaktif.</p>",
       "</section></div></details>",
+      "</div></details>",
       "</main></html>"
     ].join("");
   }

@@ -1,6 +1,6 @@
 # Pengelolaan SKU Google One, Uji Promo 12 Bulan Pro, dan Pengumpulan
 
-**Modul utama v7.12.3 adalah `Manajemen SKU G1 ACQ`, dengan versi runtime respons `g1-acq-v7.12-mappings`.** [Laporan Lokal](https://one.google.com/g1-sku-report) menyediakan **lima templat pemetaan siap pakai**: Promo Pro 99p (`pro-1yuan`), Turki 20TB (`tr-ultra-20tb`), Turki 30TB (`tr-ultra-30tb`), Ultra 75p (`ultra-75p`), dan 2TB / Pro 12 Bulan 90p (`pro-12months-90p`). **Templat Pro 99p memakai awalan `g1.ios.2tb.` -> `com.google.gemini.2tb.ai.m.3month_ip_99p`, sementara Turki 20TB memakai `exact` `g1.ios.20tb.m.v2` -> `g1.ios.20tb.m` (catatan publik 1989.99 TRY); keduanya dapat digunakan bersamaan.** Pemasangan atau upgrade mempertahankan konfigurasi lama; pengguna perlu membuka laporan dan mengklik **Terapkan Templat** untuk menyimpan aturan terkait. Menerapkan Pro 99p turut menonaktifkan aturan warisan `exact` 20TB -> target Gemini yang sama secara atomik sambil mempertahankan target 20TB lain, lalu masuk kembali lewat **halaman paket Pro sendiri**.
+**Modul utama v7.12.4 adalah `Manajemen SKU G1 ACQ`, dengan versi runtime respons `g1-acq-v7.12-mappings`.** [Laporan Lokal](https://one.google.com/g1-sku-report) menyediakan **lima templat pemetaan siap pakai**: Promo Pro 99p (`pro-1yuan`), Turki 20TB (`tr-ultra-20tb`), Turki 30TB (`tr-ultra-30tb`), Ultra 75p (`ultra-75p`), dan 2TB / Pro 12 Bulan 90p (`pro-12months-90p`). **Templat Pro 99p memakai awalan `g1.ios.2tb.` -> `com.google.gemini.2tb.ai.m.3month_ip_99p`, sementara Turki 20TB memakai `exact` `g1.ios.20tb.m.v2` -> `g1.ios.20tb.m` (catatan publik 1989.99 TRY); keduanya dapat digunakan bersamaan.** Pemasangan atau upgrade mempertahankan konfigurasi lama; pengguna perlu membuka laporan dan mengklik **Terapkan Templat** untuk menyimpan aturan terkait. Menerapkan Pro 99p turut menonaktifkan aturan warisan `exact` 20TB -> target Gemini yang sama secara atomik sambil mempertahankan target 20TB lain, lalu masuk kembali lewat **halaman paket Pro sendiri**.
 
 Mode bawaan `discount75` mempertahankan tiga pemetaan awal: 20TB / 30TB 3 bulan `75p` serta target 2TB `g1.2tb.ai.12months_ip_90p` (tanpa `.acq`); setelah menerapkan templat atau menyimpan manual, mode menjadi `custom` (meskipun targetnya sama dengan bawaan). **75p = diskon 75%, bayar 25%**; baris yang cocok pada versi ini memakai `fallback=false`. Pemetaan uji coba historis berasal dari [GitHub PR #3](https://github.com/crhywun/g1-acq/pull/3) ([@cehomecambodia-lang](https://github.com/cehomecambodia-lang)), sedangkan target `com.google.gemini.2tb.ai.m.3month_ip_99p` berasal dari [GitHub PR #8](https://github.com/crhywun/g1-acq/pull/8) ([@duwqijlk](https://github.com/duwqijlk)).
 
@@ -11,7 +11,7 @@ Pengumpulan hanya membaca respons asli yang cocok dan benar-benar diterima ponse
 **Manajemen SKU G1 ACQ — Lima templat siap pakai & pemetaan manual lokal, mempertahankan bawaan 75p & target 2TB**
 
 ```text
-https://cdn.jsdelivr.net/gh/somaylab/g1-acq@v7.12.3/g1-acq-ultra-discount.sgmodule
+https://cdn.jsdelivr.net/gh/somaylab/g1-acq@v7.12.4/g1-acq-ultra-discount.sgmodule
 ```
 
 | Item | Entri Utama Saat Ini |
@@ -20,20 +20,20 @@ https://cdn.jsdelivr.net/gh/somaylab/g1-acq@v7.12.3/g1-acq-ultra-discount.sgmodu
 | Skrip respons | [g1-acq-discount.js](../g1-acq-discount.js), identik dengan [g1-acq.js](../g1-acq.js) |
 | Versi runtime respons | `g1-acq-v7.12-mappings` |
 | Skrip laporan | [g1-sku-report-discount.js](../g1-sku-report-discount.js), identik dengan [g1-sku-report.js](../g1-sku-report.js) |
-| Versi laporan | `v7.12.3` |
+| Versi laporan | `v7.12.4` |
 | Penyimpanan lokal | Melanjutkan ketiga kunci schema 1 dari v7.9; templat tersimpan ke `g1.sku.mappings.v1` tanpa migrasi otomatis |
 
 1. Matikan **G1 ACQ Ultra 75p**, **G1 ACQ**, **G1 ACQ Ultra 90p**, **G1 ACQ Ultra Trial**, **G1 SKU Scan** terpisah, **G1 Pro Annual Test**, maupun salinan penulisan ulang lama lainnya.
-2. Tambahkan alamat `v7.12.3` di atas pada pengelolaan modul Shadowrocket dan aktifkan hanya **Manajemen SKU G1 ACQ**. Modul sudah memuat skrip respons dan laporan sehingga tidak perlu menambah skrip terpisah.
-3. Sambungkan ulang Shadowrocket, buka [Laporan Lokal](https://one.google.com/g1-sku-report), pastikan tampil **Skrip lokal telah mengambil alih** dan **v7.12.3**, lalu klik **Terapkan Templat** pada kartu templat yang diinginkan (mis. Promo Pro 99p menonaktifkan aturan warisan 20TB -> Gemini secara atomik dan mengaktifkan awalan 2TB Pro).
+2. Tambahkan alamat `v7.12.4` di atas pada pengelolaan modul Shadowrocket dan aktifkan hanya **Manajemen SKU G1 ACQ**. Modul sudah memuat skrip respons dan laporan sehingga tidak perlu menambah skrip terpisah.
+3. Sambungkan ulang Shadowrocket, buka [Laporan Lokal](https://one.google.com/g1-sku-report), pastikan tampil **Skrip lokal telah mengambil alih** dan **v7.12.4**, lalu klik **Terapkan Templat** pada kartu templat yang diinginkan (mis. Promo Pro 99p menonaktifkan aturan warisan 20TB -> Gemini secara atomik dan mengaktifkan awalan 2TB Pro).
 4. Tutup halaman paket yang terbuka atau di-cache, lalu buka kembali halaman paket terkait di Google App (untuk Promo Pro 99p, masuk ke **halaman paket 2TB / Pro**).
 5. Segarkan laporan lalu verifikasi **`test.version=g1-acq-v7.12-mappings`**, kesamaan `test.mappingRevision` dengan `mappingConfig.revision`, `test.updatedAt` terbaru, serta baris **`test.matchedFrom`** (`id` berawalan `g1.ios.2tb.` dan `to` adalah `com.google.gemini.2tb.ai.m.3month_ip_99p`).
 
-Keempat modul menambahkan `requires-body=1,max-size=0` pada `http-request` laporan dan mem-pin seluruh 8 `script-path` internal ke `@v7.12.3`. Pencocokan respons, `[Rule]` pemblokiran global UDP 443, dan `[MITM]` (`%APPEND% one.google.com`) tetap dipertahankan. [g1-sku-scan.js](../g1-sku-scan.js) dan [g1-pro-annual-test.js](../g1-pro-annual-test.js) tetap mempertahankan implementasi historis terpisah (tanpa perluasan `com.google.gemini.*`).
+Keempat modul menambahkan `requires-body=1,max-size=0` pada `http-request` laporan dan mem-pin seluruh 8 `script-path` internal ke `@v7.12.4`. Pencocokan respons, `[Rule]` pemblokiran global UDP 443, dan `[MITM]` (`%APPEND% one.google.com`) tetap dipertahankan. [g1-sku-scan.js](../g1-sku-scan.js) dan [g1-pro-annual-test.js](../g1-pro-annual-test.js) tetap mempertahankan implementasi historis terpisah (tanpa perluasan `com.google.gemini.*`).
 
 ## 2. Mengatur Dekripsi HTTPS
 
-1. Aktifkan hanya `v7.12.3` **Manajemen SKU G1 ACQ** dari Bagian 1 dan pastikan VPN Shadowrocket terhubung.
+1. Aktifkan hanya `v7.12.4` **Manajemen SKU G1 ACQ** dari Bagian 1 dan pastikan VPN Shadowrocket terhubung.
 2. Masuk ke **Halaman Config -> ikon (i) di kanan konfigurasi aktif -> HTTPS Decryption**, lalu aktifkan sakelarnya.
 3. Jika sertifikat Shadowrocket belum terpasang/dipercaya, buat & pasang dari halaman tersebut lalu buka **Pengaturan iOS -> Umum -> VPN & Manajemen Perangkat** untuk memasang profilnya.
 4. Buka **Pengaturan iOS -> Umum -> Mengenai -> Pengaturan Kepercayaan Sertifikat** dan aktifkan kepercayaan penuh root sertifikat Shadowrocket.
@@ -97,13 +97,13 @@ Tiga kunci lokal `$persistentStore` (`schemaVersion: 1`):
 3. Buka ulang halaman paket terkait (`Pro` untuk `pro-1yuan`, `20TB`/`30TB` untuk preset Ultra/Turki), lalu cek `test.version`, `test.mappingRevision`, `test.updatedAt`, dan `test.matchedFrom`.
 4. Cek panel pembayaran StoreKit asli di App Store untuk memastikan nama produk, harga awal, harga perpanjangan, dan siklus tagihan aktual, lalu ekspor JSON.
 
-## 7. Penilaian Hasil & Pemecahan Masalah Campuran Versi (v7.12.3)
+## 7. Penilaian Hasil & Pemecahan Masalah Campuran Versi (v7.12.4)
 
-Bila **laporan menampilkan `v7.12.3` tetapi memakai target `com.google.gemini.*` memunculkan `invalid` / `config-error`**:
+Bila **laporan menampilkan `v7.12.4` tetapi memakai target `com.google.gemini.*` memunculkan `invalid` / `config-error`**:
 1. Ekspor JSON terlebih dahulu untuk mencadangkan aturan dan cek `test.version`.
-2. Pastikan hanya satu modul `@v7.12.3` aktif di Shadowrocket dan kedua `script-path` memakai `@v7.12.3` (skrip respons versi lama v7.10/sebelumnya belum mengenali namespace `com.google.gemini.*`). Sambungkan ulang VPN.
+2. Pastikan hanya satu modul `@v7.12.4` aktif di Shadowrocket dan kedua `script-path` memakai `@v7.12.4` (skrip respons versi lama v7.10/sebelumnya belum mengenali namespace `com.google.gemini.*`). Sambungkan ulang VPN.
 3. Buka laporan lokal, klik **Terapkan Templat** pada **Promo Pro Murah (`pro-1yuan`)**, tutup paksa Google App, masuk ulang ke halaman paket Pro, lalu segarkan laporan untuk memverifikasi `test.version=g1-acq-v7.12-mappings` dan `test.mappingRevision` cocok.
-4. Jika kedua skrip sudah seragam `@v7.12.3` tetapi `mappingConfig.status` masih `invalid`, klik **Pulihkan Pemetaan Bawaan** lalu terapkan ulang templat.
+4. Jika kedua skrip sudah seragam `@v7.12.4` tetapi `mappingConfig.status` masih `invalid`, klik **Pulihkan Pemetaan Bawaan** lalu terapkan ulang templat.
 
 ## 8. Templat Pencatatan Perangkat Nyata
 
@@ -111,12 +111,12 @@ Bila **laporan menampilkan `v7.12.3` tetapi memakai target `com.google.gemini.*`
 Waktu Pengumpulan / Pengujian (termasuk zona waktu): [Isi]
 Versi iOS / Google App / Shadowrocket: [Isi]
 Modul Utama Tunggal yang Aktif: Manajemen SKU G1 ACQ
-Alamat Pemasangan Utama: https://cdn.jsdelivr.net/gh/somaylab/g1-acq@v7.12.3/g1-acq-ultra-discount.sgmodule
-Alamat / Versi Rilis Modul Aktual: [Isi; saat ini v7.12.3]
+Alamat Pemasangan Utama: https://cdn.jsdelivr.net/gh/somaylab/g1-acq@v7.12.4/g1-acq-ultra-discount.sgmodule
+Alamat / Versi Rilis Modul Aktual: [Isi; saat ini v7.12.4]
 Versi Respons yang Diharapkan: g1-acq-v7.12-mappings
 Status Penonaktifan Modul Lama & Pemindai Terpisah: [Isi kondisi aktual]
 Waktu Sambung Ulang VPN / Buka Ulang Paket: [Isi]
-Penanda Lokal Laporan / reportVersion: [Isi tampilan aktual; saat ini v7.12.3]
+Penanda Lokal Laporan / reportVersion: [Isi tampilan aktual; saat ini v7.12.4]
 configuredMode / configuredTarget Saat Ini: [Isi aktual; bawaan discount75 / g1.2tb.ai.12months_ip_90p]
 mappingConfig.status / customized / error Saat Ini: [Isi]
 mappingConfig.revision / updatedAt (UTC) Saat Ini: [Isi]
