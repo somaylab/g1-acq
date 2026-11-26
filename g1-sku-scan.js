@@ -1,5 +1,4 @@
-/* Pengumpulan pasif ID produk untuk Shadowrocket; respons asli dilewatkan apa adanya.
- * Penulis Asli: crhywun | Penerjemah Bahasa Indonesia: Somaylab (@somaylab) */
+/* Pengumpulan pasif ID produk untuk Shadowrocket; respons asli dilewatkan apa adanya. */
 "use strict";
 
 (function () {
