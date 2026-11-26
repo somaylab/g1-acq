@@ -4,7 +4,7 @@
 
 (function () {
   var ROOT = "https://one.google.com/g1-sku-report";
-  var VERSION = "v7.12.2";
+  var VERSION = "v7.12.3";
   var COLLECTOR_VERSION = "g1-acq-v7.12-mappings";
   var MODE_NAMES = {
     discount75: "Ultra 3 Bulan 75p (Diskon 75% / Bayar 25%)",
@@ -482,6 +482,56 @@ function createG1MappingConfig(store) {
         config = engine.read();
       }
     }
+  } else if (!exportJSON && (query("testultra") || query("testall"))) {
+    var testAllSku = query("testall");
+    var testUltraSku = query("testultra");
+    var testTarget = testAllSku || testUltraSku;
+    if (engine.validSku(testTarget)) {
+      var tRules = config.rules.slice();
+      var tPos = Object.create(null);
+      var tIds = Object.create(null);
+      tRules.forEach(function (r, idx) {
+        tIds[r.id] = true;
+        tPos[r.match + ":" + r.from] = idx;
+      });
+      function upsertTarget(matchType, fromId, toId) {
+        var k = matchType + ":" + fromId;
+        if (typeof tPos[k] === "number") {
+          var existing = tRules[tPos[k]];
+          tRules[tPos[k]] = { id: existing.id, match: matchType, from: fromId, to: toId, enabled: true };
+        } else {
+          var nid = engine.newId();
+          for (var c = 1; c <= tRules.length && tIds[nid]; c += 1) nid = engine.newId() + "-" + c;
+          tIds[nid] = true;
+          tPos[k] = tRules.length;
+          tRules.push({ id: nid, match: matchType, from: fromId, to: toId, enabled: true });
+        }
+      }
+      upsertTarget("exact", "g1.ios.20tb.m.v2", testTarget);
+      upsertTarget("exact", "g1.ios.30tb.ai.pro.m", testTarget);
+      if (testAllSku) {
+        upsertTarget("prefix", "g1.ios.ai.2tb.", testTarget);
+        upsertTarget("prefix", "g1.ios.2tb.", testTarget);
+      } else {
+        ["g1.ios.2tb.", "g1.ios.ai.2tb.", "g1.ios.helium."].forEach(function (pfx) {
+          if (typeof tPos["prefix:" + pfx] !== "number") {
+            upsertTarget("prefix", pfx, "com.google.gemini.2tb.ai.m.3month_ip_99p");
+          }
+        });
+      }
+      var tSaved = engine.save(config.revision, tRules, false);
+      if (tSaved.ok) {
+        config = tSaved.config;
+        quickfixNotice = "Mode Uji Aktif: Target " + testTarget + " dipasang pada " +
+          (testAllSku ? "semua slot (Ultra 20TB/30TB + AI Pro 2TB + Pro 2TB)" : "slot Ultra (20TB + 30TB), slot Pro tetap aman") +
+          ". Buka ulang halaman paket di aplikasi lalu klik langganan untuk tes panel App Store!";
+      } else {
+        actionError = tSaved.error;
+        config = engine.read();
+      }
+    } else {
+      actionError = "Target SKU uji tidak valid: " + testTarget;
+    }
   }
 
   function query(name) {
@@ -750,7 +800,7 @@ function createG1MappingConfig(store) {
     var tier = "Lainnya";
     var cls = "t-dim";
     var parts = [];
-    if (s.indexOf("ultra") !== -1 || s.indexOf("30tb") !== -1) {
+    if (s.indexOf("ultra") !== -1 || s.indexOf("ai.pro") !== -1 || s.indexOf("30tb") !== -1) {
       tier = s.indexOf("30tb") !== -1 ? "Ultra 30TB" : "Ultra";
       cls = "t-hi";
       parts.push(s.indexOf("30tb") !== -1 ? "Paket Ultra 30TB" : "Paket AI Ultra");
@@ -758,6 +808,10 @@ function createG1MappingConfig(store) {
       tier = "Ultra 20TB";
       cls = "t-hi";
       parts.push("Paket Ultra 20TB");
+    } else if (s.indexOf("10tb") !== -1) {
+      tier = "10TB";
+      cls = "t-hi";
+      parts.push("Paket 10TB");
     } else if (s.indexOf("helium") !== -1 || s.indexOf("ai_plus") !== -1) {
       tier = "AI Plus";
       cls = "t-hi";
@@ -782,15 +836,20 @@ function createG1MappingConfig(store) {
     } else {
       parts.push("SKU Google One");
     }
-    if (/\.(a|annual)\b|_1yr_|12month/.test(s)) parts.push("Tahunan");
-    else if (/\.(m|monthly)\b|_3mo_|3month|1month/.test(s)) parts.push("Bulanan");
+    if (/\.(a|annual)\b|_1yr_|12month/.test(s) && s.indexOf("_eft") === -1) parts.push("Tahunan");
+    else if (/\.(m|monthly)\b|_3mo_|3month|1month/.test(s) && s.indexOf("_eft") === -1) parts.push("Bulanan");
     if (s.indexOf("99p") !== -1) parts.push("Diskon 99%");
+    else if (s.indexOf("95p") !== -1) parts.push("Diskon 95%");
     else if (s.indexOf("90p") !== -1) parts.push("Diskon 90%");
+    else if (s.indexOf("85p") !== -1) parts.push("Diskon 85%");
+    else if (s.indexOf("80p") !== -1) parts.push("Diskon 80%");
     else if (s.indexOf("75p") !== -1) parts.push("Diskon 75%");
+    else if (s.indexOf("40p") !== -1) parts.push("Diskon 40%");
     else if (s.indexOf("25p") !== -1) parts.push("Diskon 25%");
     else if (s.indexOf("15p") !== -1) parts.push("Diskon 15%");
     else if (s.indexOf("5p") !== -1) parts.push("Diskon 5%");
-    else if (s.indexOf("free_trial") !== -1 || s.indexOf("_eft") !== -1) parts.push("Uji Coba");
+    else if (s.indexOf("12months_eft") !== -1) parts.push("Uji Coba Gratis 12 Bln");
+    else if (s.indexOf("1month_eft") !== -1 || s.indexOf("free_trial") !== -1 || s.indexOf("_eft") !== -1) parts.push("Uji Coba Gratis 1 Bln");
     return { tier: tier, cls: cls, label: parts.join(" · ") };
   }
   function fallbackName(row) {
@@ -912,6 +971,91 @@ function createG1MappingConfig(store) {
       "<button type=submit name=quickfix value=pro90" + (!writable || !validConfig ? " disabled" : "") + ">Semua Pro/AI → 12 Bln 90%</button>" +
       "<button type=submit name=quickfix value=ultra75" + (!writable || !validConfig ? " disabled" : "") + ">Ultra 20TB/30TB + AI → 75%</button>" +
       "</form></div></section>";
+  }
+  function testLabSection() {
+    var active30 = "";
+    var active20 = "";
+    if (validConfig) {
+      var r30 = engine.resolve("g1.ios.30tb.ai.pro.m", config);
+      var r20 = engine.resolve("g1.ios.20tb.m.v2", config);
+      active30 = r30 ? r30.to : "";
+      active20 = r20 ? r20.to : "";
+    }
+    var groups = [
+      {
+        title: "Prioritas 1 · Ultra 30TB Seri g1.ai.pro.* (PREMIUM_AI_PRO)",
+        open: true,
+        items: [
+          { sku: "g1.ai.pro.1month_eft", note: "Free Trial 1 Bulan (Ultra 30TB)" },
+          { sku: "g1.ai.pro.12months_eft", note: "Free Trial 12 Bulan (Ultra 30TB)" },
+          { sku: "g1.ai.pro.3months_ip_90p.acq", note: "3 Bulan Diskon 90% (Ultra 30TB)" },
+          { sku: "g1.ai.pro.3months_ip_85p.acq", note: "3 Bulan Diskon 85% (Ultra 30TB)" },
+          { sku: "g1.ai.pro.3months_ip_80p.acq", note: "3 Bulan Diskon 80% (Ultra 30TB)" },
+          { sku: "g1.ai.pro.3months_ip_75p.acq", note: "3 Bulan Diskon 75% (Ultra 30TB)" },
+          { sku: "g1.ai.pro.annual", note: "Paket Tahunan (Ultra 30TB)" },
+          { sku: "g1.ai.pro", note: "Base SKU — Terdeteksi 51x di Dump Akun Lu" }
+        ]
+      },
+      {
+        title: "Prioritas 2 · AI Ultra Seri g1.ai.ultra.* & g1.30tb.*",
+        open: false,
+        items: [
+          { sku: "g1.30tb.3months_ip_90p.acq", note: "Ultra 30TB · 3 Bulan Diskon 90%" },
+          { sku: "g1.ai.ultra.1month_eft", note: "AI Ultra · Free Trial 1 Bulan" },
+          { sku: "g1.ai.ultra.1month_eft.acq", note: "AI Ultra · Free Trial 1 Bulan (.acq)" },
+          { sku: "g1.ai.ultra.12months_eft", note: "AI Ultra · Free Trial 12 Bulan" },
+          { sku: "g1.ai.ultra.3months_ip_90p.acq", note: "AI Ultra · 3 Bulan Diskon 90%" },
+          { sku: "g1.ai.ultra.3months_ip_85p.acq", note: "AI Ultra · 3 Bulan Diskon 85%" },
+          { sku: "g1.ai.ultra.3months_ip_80p.acq", note: "AI Ultra · 3 Bulan Diskon 80%" },
+          { sku: "g1.ai.ultra.annual", note: "AI Ultra · Paket Tahunan" }
+        ]
+      },
+      {
+        title: "Prioritas 3 · Ultra 20TB & Pola iOS / Gemini (g1.20tb.* / .ios. / gemini)",
+        open: false,
+        items: [
+          { sku: "g1.20tb.1month_eft.acq", note: "Ultra 20TB · Free Trial 1 Bulan (.acq)" },
+          { sku: "g1.20tb.1month_eft", note: "Ultra 20TB · Free Trial 1 Bulan" },
+          { sku: "g1.20tb.12months_eft", note: "Ultra 20TB · Free Trial 12 Bulan" },
+          { sku: "g1.20tb.3months_ip_90p.acq", note: "Ultra 20TB · 3 Bulan Diskon 90%" },
+          { sku: "g1.ios.30tb.ai.pro.m.ip_3mo_75p.acq", note: "Kandidat Native iOS 30TB · 3 Bulan 75%" },
+          { sku: "g1.ios.20tb.m.ip_3mo_75p.acq", note: "Kandidat Native iOS 20TB · 3 Bulan 75%" },
+          { sku: "com.google.gemini.30tb.ai.pro.m.3month_ip_99p", note: "Kandidat Namespace Gemini 30TB · 99%" },
+          { sku: "g1.20tb.v2", note: "Ultra 20TB Base — Terdeteksi 62x di Dump Akun" }
+        ]
+      },
+      {
+        title: "Prioritas 4 · Hidden Offer Akun Lu (Diskon 95% & Free Trial Pro / 10TB)",
+        open: false,
+        items: [
+          { sku: "g1.2tb.1month_ip_95p.acq", note: "Pro 2TB · 1 Bln Diskon 95% (Terdeteksi di Dump)" },
+          { sku: "g1.2tb.1month_eft", note: "Pro 2TB · Free Trial 1 Bulan" },
+          { sku: "g1.2tb.ai.12months_ip_90p", note: "AI Pro 2TB · 12 Bln Diskon 90%" },
+          { sku: "g1.2tb.annual.12months_ip_40p", note: "Pro 2TB · Tahunan 40% (Terdeteksi di Dump)" },
+          { sku: "g1.helium.3months_ip_75p.acq", note: "AI Plus · 3 Bln 75% (Terdeteksi di Dump)" },
+          { sku: "g1.200gb.1month_ip_95p.acq", note: "200GB · 1 Bln Diskon 95% (Terdeteksi di Dump)" },
+          { sku: "g1.10tb", note: "10TB Hidden SKU (Terdeteksi 33x di Dump)" }
+        ]
+      }
+    ];
+    return "<section class=card><div class=card-head><h2>Lab Uji SKU Ultra &amp; Hidden Offer (1 Klik)</h2>" +
+      "<span class=meta>31 kandidat</span></div>" +
+      "<p class=muted>Target Ultra 75p gagal di App Store. Uji kandidat seri <code>g1.ai.pro.*</code> (PREMIUM_AI_PRO), <code>_eft</code> (Free Trial), &amp; <code>_95p</code> sekali klik lalu buka ulang halaman paket di aplikasi.</p>" +
+      groups.map(function (g) {
+        var rows = g.items.map(function (it) {
+          var isUsing = it.sku === active30 || it.sku === active20;
+          return "<tr><td><div class=sub-txt>" + escape(it.note) +
+            (isUsing ? " <span class=\"tag t-ok\">Sedang Dipakai</span>" : "") +
+            "</div><code>" + escape(it.sku) + "</code></td>" +
+            "<td class=lab-act><form method=get action=\"" + ROOT + "\" class=lab-forms>" +
+            "<button type=submit name=testultra value=\"" + escape(it.sku) + "\"" + (!writable || !validConfig ? " disabled" : "") + ">Uji di Ultra</button>" +
+            "<button type=submit name=testall value=\"" + escape(it.sku) + "\"" + (!writable || !validConfig ? " disabled" : "") + ">Semua Slot</button>" +
+            "</form></td></tr>";
+        }).join("");
+        return "<details class=sub-drawer" + (g.open ? " open" : "") + "><summary><span>" + escape(g.title) + "</span></summary>" +
+          "<div class=sub-drawer-body><div class=scroll><table><thead><tr><th>SKU Target Uji</th><th>Pasang Cepat</th></tr></thead><tbody>" +
+          rows + "</tbody></table></div></div></details>";
+      }).join("") + "</section>";
   }
   function presetTemplates() {
     return "<section id=mapping-presets class=card><div class=card-head><h2>Templat Pemetaan Siap Pakai</h2></div>" +
@@ -1078,9 +1222,12 @@ function createG1MappingConfig(store) {
     ".check{display:flex!important;align-items:center;gap:8px;align-self:end;min-height:38px;color:#ececf1!important}",
     ".check input{width:16px;height:16px}",
     ".actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}",
+    ".lab-act{white-space:nowrap;width:1%}",
+    ".lab-forms{display:flex;gap:6px}",
+    ".lab-forms button{padding:5px 9px;font-size:12px}",
     ".reset{margin-top:12px}",
     "button:disabled,fieldset:disabled{opacity:.45;cursor:default}",
-    "@media(max-width:640px){body{padding:14px 10px 36px}.fields{grid-template-columns:1fr}.toolbar,.qf-forms{flex-direction:column}.toolbar button,.toolbar a,.qf-forms button{width:100%}}"
+    "@media(max-width:640px){body{padding:14px 10px 36px}.fields{grid-template-columns:1fr}.toolbar,.qf-forms{flex-direction:column}.toolbar button,.toolbar a,.qf-forms button{width:100%}.lab-forms{flex-direction:column}}"
   ].join("");
   function renderHtml(extraNotice, extraError) {
     var finalError = extraError || actionError;
@@ -1105,6 +1252,7 @@ function createG1MappingConfig(store) {
       clearMessage ? "<p class=ok-box>" + escape(clearMessage) + "</p>" : "",
       storageAvailable ? "" : "<p class=error>Antarmuka penyimpanan lokal belum siap; halaman ini belum dapat membaca catatan pengumpulan.</p>",
       familyCoverageSection(),
+      testLabSection(),
       presetTemplates(),
       "<details class=acc" + editorOpen + "><summary><span>Aturan Pemetaan Manual (" + enabledCount + " aktif / " + config.rules.length + " aturan)</span></summary><div class=acc-body>",
       mappingEditor(),

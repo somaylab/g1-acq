@@ -20,7 +20,7 @@ const THIRTY = "g1.ios.30tb.ai.pro.m";
 // Penawaran yang diharapkan berupa fixture eksplisit, independen dari skrip dan builder.
 const VERSION = "g1-acq-v7.12-mappings";
 const MODE = "discount75";
-const REPORT_VERSION = "v7.12.2";
+const REPORT_VERSION = "v7.12.3";
 const MODE_LABELS = {
   trial: "Prioritas Uji Coba Gratis Ultra 1 Bulan (Mode Lama)",
   discount: "Prioritas Diskon 90% Ultra 3 Bulan (Mode Lama)",
@@ -415,7 +415,7 @@ for (const variant of VARIANTS) {
     assert.match(payload.response.body, /Pengelolaan SKU Google One/);
     assert(payload.response.body.includes(SOURCE));
     assert(payload.response.body.includes(TARGET));
-    assert(payload.response.body.includes("Skrip lokal telah mengambil alih · v7.12.2"));
+    assert(payload.response.body.includes("Skrip lokal telah mengambil alih · v7.12.3"));
     assert.match(payload.response.body, /<button\b[^>]*name=format[^>]*value=json[^>]*>Ekspor JSON<\/button>/);
     assert(!/<(?:script|img|iframe)\b/i.test(payload.response.body));
     assert.equal(payload.response.headers["Cache-Control"], "no-store");
@@ -434,15 +434,15 @@ for (const variant of VARIANTS) {
       const result = run(variant.report, { url: exportURL, storage });
       assert.equal(result.payload.response.status, 200);
       assert.equal(result.payload.response.headers["Content-Disposition"], 'attachment; filename="g1-sku-report.json"');
-      assert.equal(result.payload.response.headers["X-G1-Report-Version"], "v7.12.2");
+      assert.equal(result.payload.response.headers["X-G1-Report-Version"], "v7.12.3");
       const data = JSON.parse(result.payload.response.body);
-      assert.equal(data.reportVersion, "v7.12.2");
+      assert.equal(data.reportVersion, "v7.12.3");
       assert.equal(data.configuredTarget, TARGET);
       assert.equal(data.test.target, TARGET);
       assert.equal(data.test.targetOrigin, "user-specified");
       assert.equal(data.scan.skus[0].id, SOURCE);
       assert.equal(data.test.matchedFrom[0].to, TARGET);
-      assert(result.logs.some(line => line.includes("[g1-sku-report] v7.12.2 json")));
+      assert(result.logs.some(line => line.includes("[g1-sku-report] v7.12.3 json")));
     }
   });
 
@@ -1124,10 +1124,10 @@ nodeTest("pengumpul meneruskan respons saat penyimpanan gagal", () => {
   assert(result.logs.some(line => line.includes("saved=no")));
 });
 
-nodeTest("tepat empat modul mem-pin v7.12.2 dan memasangkan entri yang dipertahankan dengan laporannya", () => {
+nodeTest("tepat empat modul mem-pin v7.12.3 dan memasangkan entri yang dipertahankan dengan laporannya", () => {
   assert.equal(fs.existsSync(path.join(root, "g1-acq.sgmodule")), false);
   assert.equal(fs.existsSync(path.join(root, "g1-acq-ultra-trial.sgmodule")), false);
-  const scriptBase = "https://cdn.jsdelivr.net/gh/somaylab/g1-acq@v7.12.2/";
+  const scriptBase = "https://cdn.jsdelivr.net/gh/somaylab/g1-acq@v7.12.3/";
   const modules = [
     { file: "g1-acq-ultra-discount.sgmodule", name: "Manajemen SKU G1 ACQ", script: "g1-acq-discount.js", report: "g1-sku-report-discount.js", allPaths: true },
     { file: "g1-acq-v7.sgmodule", name: "Manajemen SKU G1 ACQ (Kompatibilitas Entri Lama)", script: "g1-acq.js", report: "g1-sku-report.js", allPaths: true },
@@ -1142,7 +1142,7 @@ nodeTest("tepat empat modul mem-pin v7.12.2 dan memasangkan entri yang dipertaha
     if (entry.name) assert(module.split(/\r?\n/).includes("#!name=" + entry.name), entry.file);
     for (const script of scripts) {
       const url = script.match(/script-path=([^,\s]+)/)[1];
-      assert.match(url, /^https:\/\/cdn\.jsdelivr\.net\/gh\/somaylab\/g1-acq@v7\.12\.2\/[a-z0-9.-]+\.js$/);
+      assert.match(url, /^https:\/\/cdn\.jsdelivr\.net\/gh\/somaylab\/g1-acq@v7\.12\.3\/[a-z0-9.-]+\.js$/);
       assert.equal(url.slice(0, url.lastIndexOf("/") + 1), scriptBase);
       assert(fs.existsSync(path.join(root, url.split("/").at(-1))));
     }

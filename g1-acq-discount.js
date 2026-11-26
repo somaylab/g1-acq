@@ -566,10 +566,10 @@ function createG1MappingConfig(store) {
           sampleContext: excerpt || existing.sampleContext || ""
         };
       });
-      var auxToken = /\b(?:[a-z0-9_]{2,32}_(?:acq|eft|75p|90p|99p|25p|15p|5p|trial)|(?:helium|ultra)[a-z0-9._-]{1,64})\b/gi;
+      var auxToken = /\b(?:g1\.[A-Za-z0-9._-]{2,120}|com\.google\.(?:one|gemini|GoogleMobile)\.[A-Za-z0-9._-]{2,120}|[a-z0-9_]{2,40}_(?:acq|eft|99p|95p|90p|85p|80p|75p|50p|40p|25p|15p|5p|trial)|(?:helium|ultra)[a-z0-9._-]{1,64}|PREMIUM_[A-Z0-9_]+)\b/gi;
       var auxMatch;
       var auxGuard = 0;
-      while ((auxMatch = auxToken.exec(decodedText)) !== null && auxGuard < 200) {
+      while ((auxMatch = auxToken.exec(decodedText)) !== null && auxGuard < 300) {
         auxGuard += 1;
         allTokensMap[auxMatch[0]] = true;
       }
@@ -586,13 +586,22 @@ function createG1MappingConfig(store) {
           excerpts.push(chunk);
         }
       });
+      var catalogBlocks = [];
+      ["g1.ios.30tb.ai.pro.m", "g1.ios.20tb.m.v2", "Google AI Ultra", "PREMIUM_AI_PRO"].forEach(function (anchor) {
+        var aPos = decodedText.indexOf(anchor);
+        if (aPos === -1) return;
+        var block = decodedText.slice(Math.max(0, aPos - 1500), Math.min(decodedText.length, aPos + 2000))
+          .replace(/[\r\n\t]+/g, " ").replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[email]");
+        catalogBlocks.push({ anchor: anchor, snippet: block });
+      });
       var snapshots = Array.isArray(prev.snapshots) ? prev.snapshots.slice(-5) : [];
       snapshots.push({
         at: now,
         path: routePath,
         length: decodedText.length,
         skuCount: Object.keys(found).length,
-        excerpts: excerpts
+        excerpts: excerpts,
+        catalogBlocks: catalogBlocks.slice(0, 4)
       });
       var contextKeys = Object.keys(contexts).sort().slice(0, 60);
       var trimmedContexts = {};
@@ -600,7 +609,7 @@ function createG1MappingConfig(store) {
       var payload = {
         schemaVersion: 1,
         updatedAt: now,
-        allTokens: Object.keys(allTokensMap).sort().slice(0, 250),
+        allTokens: Object.keys(allTokensMap).sort().slice(0, 300),
         skuContexts: trimmedContexts,
         snapshots: snapshots.slice(-6)
       };
